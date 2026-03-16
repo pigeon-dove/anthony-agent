@@ -1,0 +1,109 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="false" level="WARNING" enabled_by_default="false">
+      <option name="ignoredPackages">
+        <list>
+          <option value="aiohappyeyeballs" />
+          <option value="aiohttp" />
+          <option value="aiosignal" />
+          <option value="async-timeout" />
+          <option value="attrs" />
+          <option value="backports-asyncio-runner" />
+          <option value="black" />
+          <option value="click" />
+          <option value="datasets" />
+          <option value="dill" />
+          <option value="et-xmlfile" />
+          <option value="exceptiongroup" />
+          <option value="filelock" />
+          <option value="flake8" />
+          <option value="frozenlist" />
+          <option value="fsspec" />
+          <option value="google-auth" />
+          <option value="hf-xet" />
+          <option value="httptools" />
+          <option value="huggingface-hub" />
+          <option value="iniconfig" />
+          <option value="loguru" />
+          <option value="mccabe" />
+          <option value="multidict" />
+          <option value="multiprocess" />
+          <option value="mypy-extensions" />
+          <option value="numpy" />
+          <option value="openpyxl" />
+          <option value="packaging" />
+          <option value="pandas" />
+          <option value="pathspec" />
+          <option value="platformdirs" />
+          <option value="pluggy" />
+          <option value="propcache" />
+          <option value="pyarrow" />
+          <option value="pyasn1" />
+          <option value="pyasn1-modules" />
+          <option value="pycodestyle" />
+          <option value="pyflakes" />
+          <option value="pygments" />
+          <option value="pytest" />
+          <option value="pytest-asyncio" />
+          <option value="python-dateutil" />
+          <option value="python-dotenv" />
+          <option value="pytokens" />
+          <option value="pytz" />
+          <option value="pyyaml" />
+          <option value="rsa" />
+          <option value="ruff" />
+          <option value="shellingham" />
+          <option value="six" />
+          <option value="tomli" />
+          <option value="typer-slim" />
+          <option value="tzdata" />
+          <option value="uvicorn" />
+          <option value="uvloop" />
+          <option value="watchfiles" />
+          <option value="websockets" />
+          <option value="xxhash" />
+          <option value="yarl" />
+          <option value="redis" />
+          <option value="pydantic" />
+          <option value="asyncio-throttle" />
+          <option value="aiofiles" />
+          <option value="cryptography" />
+          <option value="fastapi" />
+          <option value="scikit-learn" />
+          <option value="DBUtils" />
+          <option value="mysql" />
+          <option value="mysql-connector-python" />
+          <option value="mysqlclient" />
+          <option value="cos-python-sdk-v5" />
+          <option value="nltk" />
+          <option value="jieba" />
+          <option value="sentence-transformers" />
+          <option value="tiktoken" />
+          <option value="prometheus-client" />
+          <option value="beautifulsoup4" />
+          <option value="html2text" />
+          <option value="lxml" />
+          <option value="pytest-cov" />
+          <option value="pytest-mock" />
+          <option value="isort" />
+          <option value="mypy" />
+          <option value="pre-commit" />
+          <option value="mkdocs" />
+          <option value="mkdocs-material" />
+          <option value="memory-profiler" />
+          <option value="line-profiler" />
+          <option value="jsonlines" />
+          <option value="tqdm" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="PyStubPackagesAdvertiser" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="pandas" />
+        </list>
+      </option>
+    </inspection_tool>
+  </profile>
+</component>
