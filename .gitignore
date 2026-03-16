@@ -216,3 +216,6 @@ __marimo__/
 .streamlit/secrets.toml
 
 .idea/*
+
+# Anthony Agent 运行时数据（会话备份、摘要等）
+data/
