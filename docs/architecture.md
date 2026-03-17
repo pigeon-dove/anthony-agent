@@ -71,7 +71,7 @@ anthony-agent/
 │   │       ├── ls.py               # ✅ 列出目录内容
 │   │       ├── glob.py             # ✅ 快速文件模式匹配
 │   │       ├── background_bash.py   # 后台运行长时间命令（待实现）
-│   │       ├── grep.py       # 按内容搜索文件（待实现）
+│   │       ├── grep.py              # ✅ 快速内容搜索（正则匹配）
 │   │       └── web_fetch.py         # 获取网页/URL 内容（待实现）
 │   │
 │   ├── mcp/                         # MCP 集成
@@ -201,7 +201,7 @@ yield UsageReport（每轮末尾）
 | | LS | `builtins/ls.py` | ✅ | 列出目录内容（文件名、大小、类型，支持 glob 忽略） |
 | | BackgroundBash | `builtins/background_bash.py` | ⏳ | 后台运行长时间命令 |
 | 🔍 搜索 | Glob | `builtins/glob.py` | ✅ | 快速文件模式匹配（支持 glob 模式，按修改时间排序） |
-| | Rg | `builtins/rg.py` | ⏳ | 基于 ripgrep 的内容搜索（支持正则、文件类型过滤） |
+| | Grep | `builtins/grep.py` | ✅ | 快速内容搜索（正则匹配，支持文件类型过滤，按修改时间排序） |
 | 🌐 网络 | WebFetch | `builtins/web_fetch.py` | ⏳ | 获取网页/URL 内容 |
 
 ---

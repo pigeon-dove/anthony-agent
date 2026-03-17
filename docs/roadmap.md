@@ -55,13 +55,13 @@
   - [ ] BackgroundBash：后台运行长时间命令
 - [ ] 搜索工具
   - [x] Glob：快速文件模式匹配（支持 glob 模式，按修改时间排序）
-  - [ ] Grep：按内容搜索（基于 ripgrep）
+  - [x] Grep：快速内容搜索（正则匹配，支持文件类型过滤）
 - [ ] 网络工具
   - [ ] WebFetch：获取网页/URL 内容
 
 **产出：** 完整的 9 个工具可用，Agent 可以操作文件、执行命令、搜索、获取网页。
 
-> **进展：** 文件操作工具已全部完成 ✅（Read / Write / Edit / MultiEdit），命令执行工具已完成 Bash 和 LS ✅，搜索工具已完成 Glob ✅，Grep 和网络工具待实现。
+> **进展：** 文件操作工具已全部完成 ✅（Read / Write / Edit / MultiEdit），命令执行工具已完成 Bash 和 LS ✅，搜索工具已全部完成 ✅（Glob / Grep），网络工具待实现。
 
 ---
 
