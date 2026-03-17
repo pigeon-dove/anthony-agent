@@ -24,12 +24,12 @@
 
 ## Phase 2：OpenAI 客户端封装 🔌
 
-- [ ] `src/client/openai_client.py` 实现
-  - [ ] 基础的 Chat Completion 调用
-  - [ ] 流式（streaming）返回支持
-  - [ ] 工具调用（function calling / tool_use）支持
-  - [ ] 错误处理与重试机制
-- [ ] API Key 管理（从 `.env` 读取）
+- [x] `src/client/openai_client.py` 实现
+  - [x] 基础的 Chat Completion 调用
+  - [x] 流式（streaming）返回支持
+  - [x] 工具调用（function calling / tool_use）支持
+  - [x] 错误处理与重试机制
+- [x] API Key 管理（从 `.env` 读取）
 
 **产出：** 可独立运行的 LLM 调用层，支持流式输出和工具调用。
 
@@ -37,10 +37,13 @@
 
 ## Phase 3：工具系统 🔧
 
-- [ ] 工具基类设计（`src/tools/base.py`）
-  - [ ] `BaseTool` 抽象类：name、description、parameters、execute()
-  - [ ] 工具注册表（ToolRegistry）
-  - [ ] 工具 schema 导出（用于 LLM function calling）
+- [x] 工具基类设计（`src/tools/base.py`）
+  - [x] `BaseTool` 抽象类：definition()、execute()
+  - [x] `ToolDefinition` / `ToolResult` 数据模型（Pydantic BaseModel）
+- [x] 工具注册中心（`src/tools/registry.py`）
+  - [x] `ToolRegistry`：register / unregister / get / execute
+  - [x] `get_definitions()` 导出 OpenAI function calling 格式的 tools 参数
+  - [x] 异常捕获与错误返回
 - [ ] 文件操作工具
   - [ ] Read：读取文件内容（支持行范围）
   - [ ] Write：创建/覆盖写入文件
@@ -61,17 +64,20 @@
 
 ## Phase 4：Agent Loop 核心 🔄
 
-- [ ] `src/agent/agent.py` 实现
-  - [ ] 主循环：用户输入 → LLM 调用 → 工具执行 → 结果返回 → 循环
-  - [ ] 消息列表（messages）管理
-  - [ ] 系统提示词加载
-  - [ ] 流式输出展示（终端渲染）
-  - [ ] 工具调用的解析与分发
-- [ ] `main.py` 入口整合
-  - [ ] CLI 交互界面
-  - [ ] 对话循环
+- [x] `src/agent/agent.py` 实现
+  - [x] 主循环：用户输入 → LLM 调用 → 工具执行 → 结果返回 → 循环
+  - [x] 消息列表（messages）管理
+  - [x] 系统提示词加载
+  - [x] 流式输出展示（终端渲染）
+  - [x] 工具调用的解析与分发
+- [x] `src/agent/events.py` 事件流模型
+  - [x] 5 种事件：TextDelta / ToolCallStart / ToolCallResult / ResponseComplete / UsageReport
+- [x] `main.py` 入口整合
+  - [x] CLI 交互界面
+  - [x] 对话循环
+  - [x] 事件驱动消费 + 彩色终端输出
 
-**产出：** 可在终端中运行的完整 Agent，支持多轮对话和工具调用。
+**产出：** 可在终端中运行的完整 Agent，支持多轮对话和工具调用。✅
 
 ---
 
@@ -181,4 +187,4 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4（核心可运行）
     → Phase 11（收尾）
 ```
 
-> **里程碑**：完成 Phase 4 后即可获得一个可运行的基础 Agent。
+> **里程碑**：Phase 4 已完成 ✅ — 现在拥有一个可在终端运行的基础 Agent，支持流式对话和工具调用。

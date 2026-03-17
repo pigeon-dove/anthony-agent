@@ -53,12 +53,14 @@ anthony-agent/
 │   │
 │   ├── agent/                       # Agent 核心
 │   │   ├── __init__.py
-│   │   ├── agent.py                 # 主 Agent Loop
+│   │   ├── agent.py                 # 主 Agent Loop（事件驱动）
+│   │   ├── events.py                # 事件流模型（5 种事件）
 │   │   └── sub_agent.py             # Sub Agent
 │   │
-│   ├── tools/                       # 工具系统（平铺结构）
-│   │   ├── __init__.py
-│   │   ├── base.py                  # 工具基类 & 注册机制
+│   ├── tools/                       # 工具系统（统一协议 + 注册中心）
+│   │   ├── __init__.py              # 导出 BaseTool, ToolDefinition, ToolResult, ToolRegistry
+│   │   ├── base.py                  # 工具基类 BaseTool & 数据模型
+│   │   ├── registry.py              # 工具注册中心 ToolRegistry
 │   │   ├── read.py                  # 读取文件内容
 │   │   ├── write.py                 # 创建/覆盖写入文件
 │   │   ├── edit.py                  # 精准编辑文件（搜索替换）
@@ -121,7 +123,7 @@ anthony-agent/
 
 ### 2. Agent 核心 (`src/agent/`)
 
-Agent 的主循环逻辑，是整个系统的中枢。
+Agent 的主循环逻辑，是整个系统的中枢。采用 **事件驱动** 架构，Agent 通过 `AsyncGenerator` yield 事件流，外部自行决定如何消费。
 
 **Agent Loop 流程：**
 
@@ -133,25 +135,58 @@ Agent 的主循环逻辑，是整个系统的中枢。
 调用 LLM（流式返回）
     ↓
 解析 LLM 响应
-    ├── 纯文本回复 → 输出给用户
-    └── 工具调用请求 → 执行工具 → 将结果追加到 messages → 回到"调用 LLM"
+    ├── 纯文本回复 → yield TextDelta 事件流 → yield ResponseComplete
+    └── 工具调用请求 → yield ToolCallStart → 执行工具 → yield ToolCallResult → 回到"调用 LLM"
     ↓
-检查是否需要上下文压缩
+yield UsageReport（每轮末尾）
     ↓
-循环直到任务完成
+循环直到 LLM 不再调用工具
 ```
 
+**事件流模型（`events.py`）：**
+
+| 事件 | 含义 | 字段 |
+|------|------|------|
+| `TextDelta` | LLM 流式输出的文本片段 | `content: str` |
+| `ToolCallStart` | LLM 决定调用工具（执行前触发） | `tool_name: str`, `arguments: dict` |
+| `ToolCallResult` | 工具执行完成的结果 | `tool_name: str`, `result: str` |
+| `ResponseComplete` | LLM 最终回复结束 | — |
+| `UsageReport` | 单次 LLM 调用的 token 用量 | `prompt_tokens`, `completion_tokens`, `total_tokens` |
+
 **关键类：**
-- `Agent`：主 Agent，管理完整的对话循环
-- `SubAgent`：子 Agent，拥有独立的上下文，用于执行子任务
+- `Agent`：主 Agent，管理完整的对话循环，`run()` 返回事件流
+- `SubAgent`：子 Agent，拥有独立的上下文，用于执行子任务（待实现）
 
 ---
 
 ### 3. 工具系统 (`src/tools/`)
 
-采用 **平铺结构**，所有工具文件直接放在 `tools/` 目录下。
+采用 **统一协议 + 注册中心** 的架构，支持三种工具来源：固定工具、动态 Skill 工具、MCP 远程工具。
 
-**工具清单：**
+**核心抽象：**
+
+| 类 | 文件 | 职责 |
+|------|------|------|
+| `ToolDefinition` | `base.py` | 工具定义（name + description + parameters JSON Schema） |
+| `ToolResult` | `base.py` | 工具执行结果（content + is_error） |
+| `BaseTool` | `base.py` | 工具基类 — `definition()` + `execute()` |
+| `ToolRegistry` | `registry.py` | 注册中心 — 聚合、查询、分发执行 |
+
+**三种工具来源：**
+
+| 来源 | 特点 | 实现方式 |
+|------|------|------|
+| 固定工具 | 描述不变，生命周期=整个应用 | 每个工具一个类，继承 `BaseTool` |
+| 动态 Skill 工具 | 描述随时变化，按需加载/卸载 | `SkillTool` 通用类，构造时传入配置数据 |
+| MCP 工具 | 第三方远程提供，运行时发现 | `McpTool` 适配器，代理调用远端 |
+
+**关键设计点：**
+- `definition()` 是**方法**而非属性 → 每次调用时动态生成，天然支持 Skill 描述变更
+- `execute()` 是 `async` 方法 → 适配项目的 async 架构，IO 不阻塞
+- `ToolRegistry` 通过 `get_definitions()` 生成 OpenAI function calling 的 `tools` 参数
+- MCP 工具名加 `mcp_{server}_` 前缀避免与内置工具冲突
+
+**工具清单（计划）：**
 
 | 类别 | 工具 | 文件 | 功能 |
 |------|------|------|------|
@@ -164,11 +199,6 @@ Agent 的主循环逻辑，是整个系统的中枢。
 | 🔍 搜索 | Glob | `glob_search.py` | 按文件名模式查找文件 |
 | | Grep | `grep_search.py` | 按内容搜索文件（基于 ripgrep） |
 | 🌐 网络 | WebFetch | `web_fetch.py` | 获取网页/URL 内容 |
-
-**工具注册机制：**
-- `base.py` 定义工具基类 `BaseTool`，包含 `name`、`description`、`parameters`（JSON Schema）、`execute()` 方法
-- 工具通过装饰器或注册函数统一注册到工具注册表
-- Agent 通过注册表获取所有可用工具的 schema，传递给 LLM
 
 ---
 
@@ -244,7 +274,7 @@ Agent 的主循环逻辑，是整个系统的中枢。
 | 决策 | 选择 | 理由 |
 |------|------|------|
 | 代码组织方式 | `src/` 目录结构 | 源码与配置/文档分离，层次清晰，适合教学 |
-| 工具文件组织 | 平铺（不分子目录） | 工具数量适中（9个），平铺更直观简洁 |
+| 工具文件组织 | 统一协议 + 注册中心 | `BaseTool` 统一三种来源（固定/Skill/MCP），`ToolRegistry` 聚合管理 |
 | 文档组织 | `docs/work-logs/` + 架构文档 | work-logs 记录每次开发，文件名带日期时间 |
 | Skill 文件位置 | 根目录 `skills/`（外部） | 与加载逻辑 `src/skills/` 分离，用户扩展更方便 |
 | 持久化格式 | JSONL | 追加写入友好，每行一条记录，便于流式处理 |
