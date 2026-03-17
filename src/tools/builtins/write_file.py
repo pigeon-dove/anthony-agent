@@ -12,7 +12,7 @@ class WriteFileTool(BaseTool):
         return ToolDefinition(
             name="write_file",
             description="""\
-**写入文件到本地文件系统。**
+写入文件到本地文件系统。
 
 使用方法：
 - 此工具将覆盖指定路径上已存在的文件。""",
