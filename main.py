@@ -1,46 +1,33 @@
 """Anthony Agent — CLI 入口"""
 
 import asyncio
+import os
 
 from src.client import OpenAIClient
-from src.tools import ToolRegistry, BaseTool, ToolDefinition, ToolResult
+from src.tools import ToolRegistry
+from src.tools.builtins import BUILTIN_TOOLS
 from src.agent import Agent
 from src.agent.events import TextDelta, ToolCallStart, ToolCallResult, ResponseComplete, UsageReport
+from src.utils import console
 
 # ── 系统提示词 ─────────────────────────────────────────────
 
-SYSTEM_PROMPT = """\
+SYSTEM_PROMPT_TEMPLATE = """\
 你是一个 AI 助手，可以执行用户指定的任务。
 
 注意事项：
 1. 在调用工具之前，请先用一句话说明你要做什么。
+2. 当前工作目录是 {cwd}。
 """
-
-# ── 示例工具（后续移到 src/tools/builtins/）──────────────────
-
-class GetWeatherTool(BaseTool):
-    def definition(self) -> ToolDefinition:
-        return ToolDefinition(
-            name="get_weather",
-            description="查询指定城市的当前天气",
-            parameters={
-                "type": "object",
-                "properties": {"city": {"type": "string", "description": "城市名称，如：北京"}},
-                "required": ["city"],
-            },
-        )
-
-    async def execute(self, city: str) -> ToolResult:
-        return ToolResult(content=f"{city}：晴，25°C，微风")
-
 
 # ── 主函数 ───────────────────────────────────────────────────
 
 async def main():
     registry = ToolRegistry()
-    registry.register(GetWeatherTool())
+    registry.register_many(BUILTIN_TOOLS)
 
-    agent = Agent(client=OpenAIClient(), registry=registry, system_prompt=SYSTEM_PROMPT)
+    system_prompt = SYSTEM_PROMPT_TEMPLATE.format(cwd=os.getcwd())
+    agent = Agent(client=OpenAIClient(), registry=registry, system_prompt=system_prompt)
 
     print("Anthony Agent (输入 exit 退出)\n")
     while True:
@@ -52,15 +39,15 @@ async def main():
 
         async for event in agent.run(user_input):
             if isinstance(event, TextDelta):
-                print(f"\033[31m{event.content}\033[0m", end="", flush=True)
+                console.red(event.content, end="", flush=True)
             elif isinstance(event, ToolCallStart):
-                print(f"\033[32m[Call]\t{event.tool_name}({event.arguments})\033[0m")
+                console.green(f"[Call]\t{event.tool_name}({event.arguments})")
             elif isinstance(event, ToolCallResult):
-                print(f"\033[32m[Tool]\t{event.tool_name} → {event.result}\033[0m")
+                console.green(f"[Tool]\t{event.tool_name} → {event.result}")
             elif isinstance(event, ResponseComplete):
-                print() # 文本输出完毕换行
+                print()
             elif isinstance(event, UsageReport):
-                print(f"\033[90m[Usage]\tprompt={event.prompt_tokens} completion={event.completion_tokens} total={event.total_tokens}\033[0m")
+                console.gray(f"[Usage]\tprompt={event.prompt_tokens} completion={event.completion_tokens} total={event.total_tokens}")
 
 
 if __name__ == "__main__":
