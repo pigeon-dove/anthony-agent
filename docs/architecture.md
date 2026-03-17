@@ -68,6 +68,7 @@ anthony-agent/
 │   │       ├── edit_file.py         # ✅ 精准编辑文件（搜索替换）
 │   │       ├── multi_edit.py        # ✅ 同一文件多处编辑（原子性）
 │   │       ├── bash.py              # 执行 shell 命令
+│   │       ├── ls.py               # ✅ 列出目录内容
 │   │       ├── background_bash.py   # 后台运行长时间命令（待实现）
 │   │       ├── glob_search.py       # 按文件名模式查找（待实现）
 │   │       ├── grep_search.py       # 按内容搜索文件（待实现）
@@ -197,6 +198,7 @@ yield UsageReport（每轮末尾）
 | | EditFile | `builtins/edit_file.py` | ✅ | 精准编辑文件（搜索替换 + 出现次数验证） |
 | | MultiEdit | `builtins/multi_edit.py` | ✅ | 对同一文件多处编辑（原子性，支持创建新文件） |
 | 💻 命令执行 | Bash | `builtins/bash.py` | ✅ | 执行 shell 命令（持久会话） |
+| | LS | `builtins/ls.py` | ✅ | 列出目录内容（文件名、大小、类型，支持 glob 忽略） |
 | | BackgroundBash | `builtins/background_bash.py` | ⏳ | 后台运行长时间命令 |
 | 🔍 搜索 | Glob | `builtins/glob_search.py` | ⏳ | 按文件名模式查找文件 |
 | | Grep | `builtins/grep_search.py` | ⏳ | 按内容搜索文件（基于 ripgrep） |

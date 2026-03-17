@@ -15,7 +15,9 @@ from src.utils import console
 SYSTEM_PROMPT_TEMPLATE = """\
 你是一个 AI 助手，可以执行用户指定的任务。
 
-注意事项：在调用工具之前，请先用一句话说明你要做什么。
+注意事项：
+- 在调用工具之前，请先用一句话说明你要做什么。
+- 当前工作目录是 {cwd}，工具调用请尽可能基于当前工作目录使用绝对路径
 """
 
 # ── 主函数 ───────────────────────────────────────────────────
@@ -39,9 +41,9 @@ async def main():
             if isinstance(event, TextDelta):
                 console.red(event.content, end="", flush=True)
             elif isinstance(event, ToolCallStart):
-                console.green(f"[Call]\t{event.tool_name}({event.arguments})")
+                console.green(f"[Call]\t{event.tool_name}({str(event.arguments)[20:]})")
             elif isinstance(event, ToolCallResult):
-                console.green(f"[Tool]\t{event.tool_name} → {event.result}")
+                console.green(f"[Tool]\t{event.tool_name} → {str(event.result)[20:]}")
             elif isinstance(event, ResponseComplete):
                 print()
             elif isinstance(event, UsageReport):
