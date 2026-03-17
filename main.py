@@ -8,7 +8,7 @@ from src.tools import ToolRegistry
 from src.tools.builtins import BUILTIN_TOOLS
 from src.agent import Agent
 from src.agent.events import TextDelta, ToolCallStart, ToolCallResult, ResponseComplete, UsageReport
-from src.utils import console
+from src.utils import console, truncate
 
 # ── 系统提示词 ─────────────────────────────────────────────
 
@@ -41,9 +41,9 @@ async def main():
             if isinstance(event, TextDelta):
                 console.red(event.content, end="", flush=True)
             elif isinstance(event, ToolCallStart):
-                console.green(f"[Call]\t{event.tool_name}({str(event.arguments)[20:]})")
+                console.green(f"[Call]\t{event.tool_name}({truncate(str(event.arguments))})")
             elif isinstance(event, ToolCallResult):
-                console.green(f"[Tool]\t{event.tool_name} → {str(event.result)[20:]}")
+                console.green(f"[Tool]\t{event.tool_name} → {truncate(str(event.result))}")
             elif isinstance(event, ResponseComplete):
                 print()
             elif isinstance(event, UsageReport):

@@ -69,9 +69,9 @@ anthony-agent/
 │   │       ├── multi_edit.py        # ✅ 同一文件多处编辑（原子性）
 │   │       ├── bash.py              # 执行 shell 命令
 │   │       ├── ls.py               # ✅ 列出目录内容
+│   │       ├── glob.py             # ✅ 快速文件模式匹配
 │   │       ├── background_bash.py   # 后台运行长时间命令（待实现）
-│   │       ├── glob_search.py       # 按文件名模式查找（待实现）
-│   │       ├── grep_search.py       # 按内容搜索文件（待实现）
+│   │       ├── grep.py       # 按内容搜索文件（待实现）
 │   │       └── web_fetch.py         # 获取网页/URL 内容（待实现）
 │   │
 │   ├── mcp/                         # MCP 集成
@@ -200,8 +200,8 @@ yield UsageReport（每轮末尾）
 | 💻 命令执行 | Bash | `builtins/bash.py` | ✅ | 执行 shell 命令（持久会话） |
 | | LS | `builtins/ls.py` | ✅ | 列出目录内容（文件名、大小、类型，支持 glob 忽略） |
 | | BackgroundBash | `builtins/background_bash.py` | ⏳ | 后台运行长时间命令 |
-| 🔍 搜索 | Glob | `builtins/glob_search.py` | ⏳ | 按文件名模式查找文件 |
-| | Grep | `builtins/grep_search.py` | ⏳ | 按内容搜索文件（基于 ripgrep） |
+| 🔍 搜索 | Glob | `builtins/glob.py` | ✅ | 快速文件模式匹配（支持 glob 模式，按修改时间排序） |
+| | Rg | `builtins/rg.py` | ⏳ | 基于 ripgrep 的内容搜索（支持正则、文件类型过滤） |
 | 🌐 网络 | WebFetch | `builtins/web_fetch.py` | ⏳ | 获取网页/URL 内容 |
 
 ---
