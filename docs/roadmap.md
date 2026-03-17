@@ -44,11 +44,11 @@
   - [x] `ToolRegistry`：register / unregister / get / execute
   - [x] `get_definitions()` 导出 OpenAI function calling 格式的 tools 参数
   - [x] 异常捕获与错误返回
-- [ ] 文件操作工具
+- [x] 文件操作工具
   - [x] Read：读取文件内容（支持行范围）
   - [x] Write：创建/覆盖写入文件
-  - [ ] Edit：搜索替换模式编辑
-  - [ ] MultiEdit：同一文件多处编辑
+  - [x] Edit：搜索替换模式编辑（精确匹配 + 出现次数验证）
+  - [x] MultiEdit：同一文件多处编辑（原子性，支持创建新文件）
 - [ ] 命令执行工具
   - [x] Bash：执行 shell 命令
   - [ ] BackgroundBash：后台运行长时间命令
@@ -59,6 +59,8 @@
   - [ ] WebFetch：获取网页/URL 内容
 
 **产出：** 完整的 9 个工具可用，Agent 可以操作文件、执行命令、搜索、获取网页。
+
+> **进展：** 文件操作工具已全部完成 ✅（Read / Write / Edit / MultiEdit），命令执行、搜索、网络工具待实现。
 
 ---
 

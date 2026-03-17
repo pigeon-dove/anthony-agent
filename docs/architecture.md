@@ -61,15 +61,17 @@ anthony-agent/
 │   │   ├── __init__.py              # 导出 BaseTool, ToolDefinition, ToolResult, ToolRegistry
 │   │   ├── base.py                  # 工具基类 BaseTool & 数据模型
 │   │   ├── registry.py              # 工具注册中心 ToolRegistry
-│   │   ├── read.py                  # 读取文件内容
-│   │   ├── write.py                 # 创建/覆盖写入文件
-│   │   ├── edit.py                  # 精准编辑文件（搜索替换）
-│   │   ├── multi_edit.py            # 同一文件多处编辑
-│   │   ├── bash.py                  # 执行 shell 命令
-│   │   ├── background_bash.py       # 后台运行长时间命令
-│   │   ├── glob_search.py           # 按文件名模式查找
-│   │   ├── grep_search.py           # 按内容搜索文件（ripgrep）
-│   │   └── web_fetch.py             # 获取网页/URL 内容
+│   │   └── builtins/                # 内置工具集
+│   │       ├── __init__.py          # BUILTIN_TOOLS 导出
+│   │       ├── read_file.py         # 读取文件内容（支持行范围）
+│   │       ├── write_file.py        # 创建/覆盖写入文件
+│   │       ├── edit_file.py         # ✅ 精准编辑文件（搜索替换）
+│   │       ├── multi_edit.py        # ✅ 同一文件多处编辑（原子性）
+│   │       ├── bash.py              # 执行 shell 命令
+│   │       ├── background_bash.py   # 后台运行长时间命令（待实现）
+│   │       ├── glob_search.py       # 按文件名模式查找（待实现）
+│   │       ├── grep_search.py       # 按内容搜索文件（待实现）
+│   │       └── web_fetch.py         # 获取网页/URL 内容（待实现）
 │   │
 │   ├── mcp/                         # MCP 集成
 │   │   ├── __init__.py
@@ -188,17 +190,17 @@ yield UsageReport（每轮末尾）
 
 **工具清单（计划）：**
 
-| 类别 | 工具 | 文件 | 功能 |
-|------|------|------|------|
-| 📁 文件操作 | Read | `read.py` | 读取文件内容（支持指定行范围） |
-| | Write | `write.py` | 创建/覆盖写入文件 |
-| | Edit | `edit.py` | 精准编辑文件的特定部分（搜索替换） |
-| | MultiEdit | `multi_edit.py` | 对同一文件进行多处编辑 |
-| 💻 命令执行 | Bash | `bash.py` | 执行 shell 命令 |
-| | BackgroundBash | `background_bash.py` | 后台运行长时间命令 |
-| 🔍 搜索 | Glob | `glob_search.py` | 按文件名模式查找文件 |
-| | Grep | `grep_search.py` | 按内容搜索文件（基于 ripgrep） |
-| 🌐 网络 | WebFetch | `web_fetch.py` | 获取网页/URL 内容 |
+| 类别 | 工具 | 文件 | 状态 | 功能 |
+|------|------|------|------|------|
+| 📁 文件操作 | ReadFile | `builtins/read_file.py` | ✅ | 读取文件内容（支持指定行范围） |
+| | WriteFile | `builtins/write_file.py` | ✅ | 创建/覆盖写入文件 |
+| | EditFile | `builtins/edit_file.py` | ✅ | 精准编辑文件（搜索替换 + 出现次数验证） |
+| | MultiEdit | `builtins/multi_edit.py` | ✅ | 对同一文件多处编辑（原子性，支持创建新文件） |
+| 💻 命令执行 | Bash | `builtins/bash.py` | ✅ | 执行 shell 命令（持久会话） |
+| | BackgroundBash | `builtins/background_bash.py` | ⏳ | 后台运行长时间命令 |
+| 🔍 搜索 | Glob | `builtins/glob_search.py` | ⏳ | 按文件名模式查找文件 |
+| | Grep | `builtins/grep_search.py` | ⏳ | 按内容搜索文件（基于 ripgrep） |
+| 🌐 网络 | WebFetch | `builtins/web_fetch.py` | ⏳ | 获取网页/URL 内容 |
 
 ---
 
