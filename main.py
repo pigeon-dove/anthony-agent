@@ -15,16 +15,14 @@ from src.utils import console
 SYSTEM_PROMPT_TEMPLATE = """\
 你是一个 AI 助手，可以执行用户指定的任务。
 
-注意事项：
-1. 在调用工具之前，请先用一句话说明你要做什么。
-2. 当前工作目录是 {cwd}。
+注意事项：在调用工具之前，请先用一句话说明你要做什么。
 """
 
 # ── 主函数 ───────────────────────────────────────────────────
 
 async def main():
     registry = ToolRegistry()
-    registry.register_many(BUILTIN_TOOLS)
+    registry.register_many([tool() for tool in BUILTIN_TOOLS])
 
     system_prompt = SYSTEM_PROMPT_TEMPLATE.format(cwd=os.getcwd())
     agent = Agent(client=OpenAIClient(), registry=registry, system_prompt=system_prompt)

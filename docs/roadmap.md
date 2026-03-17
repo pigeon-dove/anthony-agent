@@ -45,12 +45,12 @@
   - [x] `get_definitions()` 导出 OpenAI function calling 格式的 tools 参数
   - [x] 异常捕获与错误返回
 - [ ] 文件操作工具
-  - [ ] Read：读取文件内容（支持行范围）
-  - [ ] Write：创建/覆盖写入文件
+  - [x] Read：读取文件内容（支持行范围）
+  - [x] Write：创建/覆盖写入文件
   - [ ] Edit：搜索替换模式编辑
   - [ ] MultiEdit：同一文件多处编辑
 - [ ] 命令执行工具
-  - [ ] Bash：执行 shell 命令
+  - [x] Bash：执行 shell 命令
   - [ ] BackgroundBash：后台运行长时间命令
 - [ ] 搜索工具
   - [ ] Glob：按文件名模式查找
