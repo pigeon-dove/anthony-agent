@@ -6,13 +6,20 @@ from pathlib import Path
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
 _TOOL_DESCRIPTION = """\
-通过精确的字符串搜索替换来编辑文件，自带匹配数量验证以确保安全。
-使用指南：
-- old_string 必须与文件内容**逐字符**精确匹配，包括所有空白、缩进和换行
-- 注意：read_file 输出带行号前缀（空格+行号+制表符），old_string 中不要包含这些前缀
-- 对同一文件进行多处编辑时，优先使用 multi_edit 工具
-- 建议在编辑前先用 read_file 确认文件内容
-- expected_replacements 默认为 1，用于验证匹配数量是否符合预期"""
+通过**精确字符串匹配**进行搜索替换来编辑文件，自带匹配数量验证以确保安全。
+
+核心规则：
+- old_string 必须与文件内容逐字符精确匹配，包括所有空白、缩进和换行
+- read_file 输出带行号前缀（空格+行号+制表符），old_string 中不要包含这些前缀
+- expected_replacements 默认为 1，匹配数量不符时操作会失败
+
+适用场景：
+- 对文件进行单处精确修改
+- 建议编辑前先用 read_file 确认文件内容
+
+不适用场景：
+- 对同一文件进行多处编辑时，请改用 multi_edit 工具（更高效）
+- 创建新文件或完全重写时，请改用 write_file 工具"""
 
 
 class EditFileTool(BaseTool):

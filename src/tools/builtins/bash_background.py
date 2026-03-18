@@ -11,12 +11,12 @@ from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
 # ── 常量 ──
 
-_MAX_JOBS = 5             # 最大并发后台任务数
-_MAX_BUFFER = 3000        # 缓冲区最大行数，超过时截断
-_DEFAULT_TAIL = 50        # status 默认返回行数
-_MAX_TAIL = 1000          # status 最大返回行数
-_INIT_WAIT = 1            # start 后等待初始输出的秒数
-_STOP_TIMEOUT = 5         # terminate 后等待进程退出的秒数
+_MAX_JOBS = 5  # 最大并发后台任务数
+_MAX_BUFFER = 3000  # 缓冲区最大行数，超过时截断
+_DEFAULT_TAIL = 50  # status 默认返回行数
+_MAX_TAIL = 1000  # status 最大返回行数
+_INIT_WAIT = 1  # start 后等待初始输出的秒数
+_STOP_TIMEOUT = 5  # terminate 后等待进程退出的秒数
 
 _TOOL_DESCRIPTION = """\
 在后台运行长时间命令，**异步执行，不阻塞对话**。启动后立即返回 job_id，随后可随时查看输出或终止任务。

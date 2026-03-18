@@ -10,12 +10,20 @@ from src.tools.base import BaseTool, ToolDefinition, ToolResult
 _FN_FLAGS = wcfnmatch.BRACE
 
 _TOOL_DESCRIPTION = """\
-列出目录中的文件和子目录，显示名称、类型和大小信息。
+列出目录中的文件和子目录，显示名称、类型和大小信息，结果按目录优先、名称字母序排列。
+
+适用场景：
+- 快速了解目录结构和文件分布
+- 查看某个目录下有哪些文件和子目录
+
+不适用场景：
+- 递归查找深层文件 → 请使用 glob 工具
+- 按文件内容搜索 → 请使用 grep 工具
+
 使用指南：
 - 使用绝对路径指定目标目录
-- 可通过 ignore 参数排除不需要的文件（如 `*.pyc`、`__pycache__`、`.git`）
-- 结果按目录优先、名称字母序排列
-- 仅列出直接子项，不递归；如需查找深层文件请使用 glob 工具"""
+- 仅列出直接子项，不递归
+- 可通过 ignore 参数排除不需要的文件（如 `*.pyc`、`__pycache__`、`.git`）"""
 
 
 def _format_size(num_bytes: int) -> str:

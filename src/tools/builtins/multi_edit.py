@@ -6,14 +6,20 @@ from pathlib import Path
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
 _TOOL_DESCRIPTION = """\
-对单个文件执行多次搜索替换操作，原子性执行（全部成功或全部回滚）。
-使用指南：
+对单个文件执行多次搜索替换操作，**原子性执行**（全部成功或全部回滚，不会产生半成品）。
+
+执行模式：
 - 编辑按顺序依次应用，每次基于前一次的结果
-- 每个编辑的 old_string 必须与当时的文件内容精确匹配（包括所有空白和缩进）
-- old_string 与 new_string 不能相同
-- 匹配数量必须等于 expected_replacements（默认 1），否则整体失败
+- 任一编辑失败则整体回滚，文件保持不变
+
+适用场景：
+- 对同一文件进行多处修改（优先使用此工具，而非多次调用 edit_file）
 - 创建新文件：第一个编辑的 old_string 设为空字符串，new_string 为文件内容
-- 对同一文件做多处修改时，优先使用此工具而非多次调用 edit_file"""
+
+核心规则：
+- old_string 必须与当时的文件内容精确匹配（包括所有空白和缩进）
+- old_string 与 new_string 不能相同
+- 匹配数量必须等于 expected_replacements（默认 1），否则整体失败"""
 
 
 class MultiEditTool(BaseTool):
