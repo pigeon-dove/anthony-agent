@@ -1,8 +1,17 @@
 """WriteFile 工具 — 创建或覆盖写入文件"""
 
+import asyncio
 from pathlib import Path
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
+
+_TOOL_DESCRIPTION = """\
+创建新文件或完全覆写已有文件的内容。父目录不存在时会自动创建。
+使用指南：
+- 使用绝对路径指定目标文件
+- 文件已存在时内容会被完全覆盖，请谨慎使用
+- 修改现有文件的部分内容时，优先使用 edit_file 或 multi_edit 工具
+- 仅在创建全新文件或需要完全重写文件时使用"""
 
 
 class WriteFileTool(BaseTool):
@@ -11,11 +20,7 @@ class WriteFileTool(BaseTool):
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="write_file",
-            description="""\
-写入文件到本地文件系统。
-
-使用方法：
-- 此工具将覆盖指定路径上已存在的文件。""",
+            description=_TOOL_DESCRIPTION,
             parameters={
                 "type": "object",
                 "properties": {
@@ -33,10 +38,9 @@ class WriteFileTool(BaseTool):
         )
 
     async def execute(self, path: str, content: str) -> ToolResult:
-        try:
-            p = Path(path).resolve()
-            p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(content, encoding="utf-8")
-            return ToolResult(content=f"已写入 {path}（{len(content)} 字符）")
-        except Exception as e:
-            return ToolResult(content=f"写入文件失败: {e}", is_error=True)
+        p = Path(path).resolve()
+        existed = p.is_file()
+        await asyncio.to_thread(lambda: p.parent.mkdir(parents=True, exist_ok=True))
+        await asyncio.to_thread(p.write_text, content, encoding="utf-8")
+        action = "已覆写" if existed else "已创建"
+        return ToolResult(content=f"{action} {path}（{len(content)} 字符）")

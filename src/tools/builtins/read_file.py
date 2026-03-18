@@ -1,30 +1,73 @@
 """ReadFile 工具 — 读取文件内容"""
 
+import asyncio
 from pathlib import Path
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
+
+_MAX_LINES = 2000  # 默认最多读取行数
+_MAX_LINE_CHARS = 2000  # 单行最大字符数
+_MAX_OUTPUT = 60_000  # 总输出字符上限
+
+_TOOL_DESCRIPTION = """\
+读取文件内容，以带行号的格式输出（行号从 1 开始）。
+使用指南：
+- 使用绝对路径指定文件
+- 默认读取最多 2000 行，单行超过 2000 字符会截断
+- 总输出不超过 60000 字符，超大文件会提前截断
+- 长文件可通过 offset 和 limit 参数指定读取范围
+- 可同时发起多个读取调用以提高效率
+- 输出中的行号前缀不是文件内容的一部分，编辑时不要包含行号"""
+
+
+def _read_lines(p: Path, start: int, count: int) -> tuple[list[str], int]:
+    """
+    流式逐行读取 [start, start+count)，返回 (选中行列表, 文件总行数)。
+
+    不会将整个文件加载到内存。
+    """
+    selected: list[str] = []
+    total = 0
+    with p.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            if total >= start and len(selected) < count:
+                selected.append(line.rstrip("\n"))
+            total += 1
+    return selected, total
+
+
+def _format_output(lines: list[str], start: int, total: int) -> str:
+    """将行列表格式化为 cat -n 风格输出，受单行字符和总输出双重限制。"""
+    parts: list[str] = []
+    budget = _MAX_OUTPUT
+    shown = 0
+
+    for i, line in enumerate(lines, start=start + 1):
+        if len(line) > _MAX_LINE_CHARS:
+            line = line[:_MAX_LINE_CHARS] + "..."
+        formatted = f"     {i}\t{line}"
+        if budget - len(formatted) - 1 < 0:  # -1 for '\n'
+            break
+        parts.append(formatted)
+        budget -= len(formatted) + 1
+        shown += 1
+
+    end = start + shown
+    result = "\n".join(parts)
+
+    if end < total:
+        result += f"\n\n(显示第 {start + 1}-{end} 行，共 {total} 行，剩余 {total - end} 行未显示)"
+
+    return result
 
 
 class ReadFileTool(BaseTool):
     """读取指定文件的内容，支持可选的行范围"""
 
-    MAX_LINES = 2000        # 默认最多读取行数
-    MAX_LINE_CHARS = 2000   # 单行最大字符数
-
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
             name="read_file",
-            description="""\
-从本地文件系统读取文件。
-
-使用方法：
-- 您可以使用此工具直接访问任何文件。假设此工具能够读取机器上的所有文件。如果用户提供了文件路径，请假定该路径有效。即使读取不存在的文件也可以，系统会返回错误信息。
-- path 参数必须是绝对路径，而非相对路径。
-- 默认从文件开头读取，最多读取 2000 行。
-- 可选择指定行偏移量和行数限制（尤其对长文件很方便），但建议不提供这些参数以读取整个文件。
-- 任何长度超过 2000 个字符的行都将被截断。
-- 结果以 **cat -n** 格式返回，行号从 1 开始。
-- 您具备在单次回复中调用多个工具的能力。建议批量推测性读取多个潜在有用的文件，这通常更好。""",
+            description=_TOOL_DESCRIPTION,
             parameters={
                 "type": "object",
                 "properties": {
@@ -52,23 +95,8 @@ class ReadFileTool(BaseTool):
         if not p.is_file():
             return ToolResult(content=f"不是文件: {path}", is_error=True)
 
-        try:
-            lines = p.read_text(encoding="utf-8").splitlines()
+        start = (offset - 1) if offset and offset > 0 else 0
+        count = limit if limit and limit > 0 else _MAX_LINES
 
-            # 行范围切片（offset 从 1 开始，limit 默认 MAX_LINES）
-            start = (offset - 1) if offset and offset > 0 else 0
-            count = limit if limit and limit > 0 else self.MAX_LINES
-            end = min(start + count, len(lines))
-            selected = lines[start:end]
-
-            # cat -n 格式：行号从 1 开始，超长行截断
-            output_lines: list[str] = []
-            for i, line in enumerate(selected, start=start + 1):
-                if len(line) > self.MAX_LINE_CHARS:
-                    line = line[: self.MAX_LINE_CHARS] + "..."
-                output_lines.append(f"     {i}\t{line}")
-
-            content = "\n".join(output_lines)
-            return ToolResult(content=content)
-        except Exception as e:
-            return ToolResult(content=f"读取文件失败: {e}", is_error=True)
+        lines, total = await asyncio.to_thread(_read_lines, p, start, count)
+        return ToolResult(content=_format_output(lines, start, total))
