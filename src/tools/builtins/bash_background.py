@@ -239,7 +239,7 @@ class BackgroundBashTool(BaseTool):
         if not alive:
             return None
         lines = [f"- {j.job_id}: {j.command} (运行中, {self._fmt_duration(j.started_at)})" for j in alive]
-        return "[活跃后台任务]\n" + "\n".join(lines)
+        return "[background_bash 活跃后台任务]\n" + "\n".join(lines)
 
     @staticmethod
     def _fmt_duration(started_at: float) -> str:

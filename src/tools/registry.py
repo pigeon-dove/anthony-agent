@@ -63,3 +63,22 @@ class ToolRegistry:
             return await tool.execute(**arguments)
         except Exception as e:
             return ToolResult(content=f"工具执行异常: {e}", is_error=True)
+
+    def collect_context(self) -> str | None:
+        """
+        收集所有工具的动态上下文信息，拼接为一个字符串。
+
+        遍历所有注册工具，调用 context_injection()，将非空结果合并。
+        返回 None 表示所有工具均无上下文需要注入。
+        """
+        parts = []
+        for tool in self._tools.values():
+            ctx = tool.context_injection()
+            if ctx:
+                parts.append(ctx)
+        return "\n\n".join(parts) if parts else None
+
+    async def cleanup_all(self) -> None:
+        """清理所有工具的资源"""
+        for tool in self._tools.values():
+            await tool.cleanup()

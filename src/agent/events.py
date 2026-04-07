@@ -19,6 +19,13 @@ class ToolCallStart(AgentEvent):
     arguments: dict
 
 
+class ToolCallArgumentsDelta(AgentEvent):
+    """工具调用参数的增量片段（用于流式显示编辑/写入内容）"""
+    tool_name: str
+    field_name: str   # 正在流式输出的字段名，如 "content"、"new_string"
+    delta: str        # 增量文本
+
+
 class ToolCallResult(AgentEvent):
     """工具调用完成的结果"""
     tool_name: str

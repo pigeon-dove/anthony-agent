@@ -68,9 +68,9 @@ anthony-agent/
 │   │       ├── edit_file.py         # ✅ 精准编辑文件（搜索替换）
 │   │       ├── multi_edit.py        # ✅ 同一文件多处编辑（原子性）
 │   │       ├── bash.py              # 执行 shell 命令
+│   │       ├── bash_background.py   # ✅ 后台运行长时间命令
 │   │       ├── ls.py               # ✅ 列出目录内容
 │   │       ├── glob.py             # ✅ 快速文件模式匹配
-│   │       ├── background_bash.py   # 后台运行长时间命令（待实现）
 │   │       ├── grep.py              # ✅ 快速内容搜索（正则匹配）
 │   │       └── web_fetch.py         # 获取网页/URL 内容（待实现）
 │   │
@@ -133,7 +133,7 @@ Agent 的主循环逻辑，是整个系统的中枢。采用 **事件驱动** �
 ```
 用户输入
     ↓
-构建 messages（system prompt + 历史上下文 + 用户消息）
+构建 messages（system prompt + 工具动态上下文 + 对话历史）
     ↓
 调用 LLM（流式返回）
     ↓
@@ -145,6 +145,16 @@ yield UsageReport（每轮末尾）
     ↓
 循环直到 LLM 不再调用工具
 ```
+
+**动态上下文注入机制：**
+
+`Agent._build_messages()` 在每次 LLM 调用前，将 system prompt 与工具动态上下文拼接为单条 system 消息：
+
+1. 调用 `ToolRegistry.collect_context()` 收集所有工具的 `context_injection()` 返回值
+2. 非空时拼接到 system prompt 后面（`\n\n` 分隔）
+3. 与对话历史 `_messages` 组合为完整的 messages 列表
+
+这确保每轮 LLM 调用都能感知工具的实时状态（如后台运行中的任务列表）。
 
 **事件流模型（`events.py`）：**
 
@@ -171,9 +181,9 @@ yield UsageReport（每轮末尾）
 | 类 | 文件 | 职责 |
 |------|------|------|
 | `ToolDefinition` | `base.py` | 工具定义（name + description + parameters JSON Schema） |
-| `ToolResult` | `base.py` | 工具执行结果（content + is_error） |
-| `BaseTool` | `base.py` | 工具基类 — `definition()` + `execute()` |
-| `ToolRegistry` | `registry.py` | 注册中心 — 聚合、查询、分发执行 |
+| `ToolResult` | `base.py` | 工具执行结果（content + is_error），含 `to_message_dict()` |
+| `BaseTool` | `base.py` | 工具基类 — `definition()` + `execute()` + `context_injection()` + `cleanup()` |
+| `ToolRegistry` | `registry.py` | 注册中心 — 聚合、查询、分发执行、收集上下文、统一清理 |
 
 **三种工具来源：**
 
@@ -186,10 +196,14 @@ yield UsageReport（每轮末尾）
 **关键设计点：**
 - `definition()` 是**方法**而非属性 → 每次调用时动态生成，天然支持 Skill 描述变更
 - `execute()` 是 `async` 方法 → 适配项目的 async 架构，IO 不阻塞
+- `context_injection()` → 工具可重写此方法，在每次 LLM 调用前提供实时状态信息（如后台任务列表），返回 `None` 表示无需注入
+- `cleanup()` → Agent 退出时统一调用，用于资源清理（如终止后台进程）
 - `ToolRegistry` 通过 `get_definitions()` 生成 OpenAI function calling 的 `tools` 参数
+- `ToolRegistry.collect_context()` 遍历所有工具的 `context_injection()`，拼接为完整上下文字符串
+- `ToolRegistry.cleanup_all()` 统一调用所有工具的 `cleanup()` 方法
 - MCP 工具名加 `mcp_{server}_` 前缀避免与内置工具冲突
 
-**工具清单（计划）：**
+**工具清单：**
 
 | 类别 | 工具 | 文件 | 状态 | 功能 |
 |------|------|------|------|------|
@@ -198,8 +212,8 @@ yield UsageReport（每轮末尾）
 | | EditFile | `builtins/edit_file.py` | ✅ | 精准编辑文件（搜索替换 + 出现次数验证） |
 | | MultiEdit | `builtins/multi_edit.py` | ✅ | 对同一文件多处编辑（原子性，支持创建新文件） |
 | 💻 命令执行 | Bash | `builtins/bash.py` | ✅ | 执行 shell 命令（持久会话） |
+| | BackgroundBash | `builtins/bash_background.py` | ✅ | 后台运行长时间命令（异步，支持 start/status/stop/list） |
 | | LS | `builtins/ls.py` | ✅ | 列出目录内容（文件名、大小、类型，支持 glob 忽略） |
-| | BackgroundBash | `builtins/background_bash.py` | ⏳ | 后台运行长时间命令 |
 | 🔍 搜索 | Glob | `builtins/glob.py` | ✅ | 快速文件模式匹配（支持 glob 模式，按修改时间排序） |
 | | Grep | `builtins/grep.py` | ✅ | 快速内容搜索（正则匹配，支持文件类型过滤，按修改时间排序） |
 | 🌐 网络 | WebFetch | `builtins/web_fetch.py` | ⏳ | 获取网页/URL 内容 |

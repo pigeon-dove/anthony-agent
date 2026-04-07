@@ -49,19 +49,21 @@
   - [x] Write：创建/覆盖写入文件
   - [x] Edit：搜索替换模式编辑（精确匹配 + 出现次数验证）
   - [x] MultiEdit：同一文件多处编辑（原子性，支持创建新文件）
-- [ ] 命令执行工具
+- [x] 命令执行工具
   - [x] Bash：执行 shell 命令
   - [x] LS：列出目录内容（文件名、大小、类型等）
-  - [ ] BackgroundBash：后台运行长时间命令
-- [ ] 搜索工具
+  - [x] BackgroundBash：后台运行长时间命令（异步，支持 start/status/stop/list）
+- [x] 搜索工具
   - [x] Glob：快速文件模式匹配（支持 glob 模式，按修改时间排序）
   - [x] Grep：快速内容搜索（正则匹配，支持文件类型过滤）
 - [ ] 网络工具
   - [ ] WebFetch：获取网页/URL 内容
 
-**产出：** 完整的 9 个工具可用，Agent 可以操作文件、执行命令、搜索、获取网页。
+**产出：** 完整的 10 个工具可用，Agent 可以操作文件、执行命令、搜索、获取网页。
 
-> **进展：** 文件操作工具已全部完成 ✅（Read / Write / Edit / MultiEdit），命令执行工具已完成 Bash 和 LS ✅，搜索工具已全部完成 ✅（Glob / Grep），网络工具待实现。
+> **进展：** 文件操作工具已全部完成 ✅（Read / Write / Edit / MultiEdit），命令执行工具已全部完成 ✅（Bash / BackgroundBash / LS），搜索工具已全部完成 ✅（Glob / Grep），网络工具待实现。
+
+> **新增能力：** 工具动态上下文注入系统已完成 — `BaseTool.context_injection()` + `ToolRegistry.collect_context()` + `Agent._build_messages()` 拼接。工具资源清理机制已完成 — `BaseTool.cleanup()` + `ToolRegistry.cleanup_all()`。
 
 ---
 
@@ -190,4 +192,4 @@ Phase 1 → Phase 2 → Phase 3 → Phase 4（核心可运行）
     → Phase 11（收尾）
 ```
 
-> **里程碑**：Phase 4 已完成 ✅ — 现在拥有一个可在终端运行的基础 Agent，支持流式对话和工具调用。
+> **里程碑**：Phase 4 已完成 ✅ — 现在拥有一个可在终端运行的基础 Agent，支持流式对话、工具调用和工具动态上下文注入。

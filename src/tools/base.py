@@ -39,3 +39,16 @@ class BaseTool(ABC):
     async def execute(self, **kwargs) -> ToolResult:
         """执行工具，返回结果"""
         ...
+
+    def context_injection(self) -> str | None:
+        """
+        返回需要注入到 system prompt 中的动态上下文信息。
+
+        工具可以重写此方法，在每次 LLM 调用前提供实时状态信息（如后台任务列表）。
+        返回 None 表示无需注入。
+        """
+        return None
+
+    async def cleanup(self) -> None:
+        """清理资源，Agent 退出时调用。子类按需重写。"""
+        pass

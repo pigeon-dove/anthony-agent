@@ -6,7 +6,7 @@ import time
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
-_TIMEOUT = 120
+_TIMEOUT = 30
 _MAX_TIMEOUT = 600
 _MAX_OUTPUT = 30_000
 
@@ -15,17 +15,19 @@ _TOOL_DESCRIPTION = """\
 
 执行模式：
 - 命令执行期间会阻塞后续操作，直到命令完成或超时才返回输出
-- 超时默认 120 秒，最大 600 秒；输出超过 30000 字符会被截断（保留首尾各半）
+- 超时默认 30 秒，最大 600 秒；超时后命令会被强制终止，shell 会话将被重置（环境变量、工作目录等状态丢失）
+- 输出超过 30000 字符会被截断（保留首尾各半）
 
 适用场景：
 - 快速命令：文件操作、git 操作、包管理、编译构建等
 - 一次性任务：脚本执行、数据处理、环境配置等
 - 需要即时反馈的操作：测试运行、代码检查、查询命令等
 
-不适用场景（请改用 background_bash 工具）：
+⚠️ 不适用场景（必须改用 background_bash 工具）：
 - 长时间运行的进程：dev server、watch 模式、持续编译等
 - 持续监控类任务：日志 tail、文件监听等
-- 任何预期运行超过 2 分钟的命令
+- 任何不会自动结束的命令或预期运行超过 30 秒的命令
+- 如果你不确定命令是否会快速结束，请优先使用 background_bash
 
 使用指南：
 - 命令用 `;` 或 `&&` 连接，不要用换行符
@@ -49,7 +51,7 @@ class BashTool(BaseTool):
                 "type": "object",
                 "properties": {
                     "command": {"type": "string", "description": "要执行的 shell 命令"},
-                    "timeout": {"type": "integer", "description": "超时（秒），默认 120"},
+                    "timeout": {"type": "integer", "description": "超时（秒），默认 30"},
                 },
                 "required": ["command"],
             },
@@ -72,7 +74,14 @@ class BashTool(BaseTool):
         if lines is None:
             proc.kill()
             self._process = None
-            return ToolResult(content=f"命令超时（{timeout}s）", is_error=True)
+            return ToolResult(
+                content=(
+                    f"命令超时（{timeout}s），已强制终止该命令并重置 shell 会话"
+                    f"（之前的环境变量、工作目录等状态已丢失）。"
+                    f"该命令可能是长时间运行的进程，请改用 background_bash 工具重新执行。"
+                ),
+                is_error=True,
+            )
 
         output = self._truncate("\n".join(lines))
 
