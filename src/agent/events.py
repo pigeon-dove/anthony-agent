@@ -1,44 +1,47 @@
-"""Agent 事件流模型"""
+"""Agent 事件流定义"""
 
 from pydantic import BaseModel
 
 
 class AgentEvent(BaseModel):
-    """Agent 事件基类"""
     pass
 
 
 class TextDelta(AgentEvent):
-    """LLM 流式输出的文本片段"""
     content: str
 
 
 class ToolCallStart(AgentEvent):
-    """LLM 决定调用工具（工具执行前触发）"""
     tool_name: str
     arguments: dict
 
 
 class ToolCallArgumentsDelta(AgentEvent):
-    """工具调用参数的增量片段（用于流式显示编辑/写入内容）"""
     tool_name: str
-    field_name: str   # 正在流式输出的字段名，如 "content"、"new_string"
-    delta: str        # 增量文本
+    field_name: str
+    delta: str
 
 
 class ToolCallResult(AgentEvent):
-    """工具调用完成的结果"""
     tool_name: str
     result: str
 
 
 class ResponseComplete(AgentEvent):
-    """LLM 文本回复结束"""
     pass
 
 
 class UsageReport(AgentEvent):
-    """单次 LLM 调用的 token 用量"""
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+
+
+class CompactStart(AgentEvent):
+    current_tokens: int
+    threshold_tokens: int
+
+
+class CompactComplete(AgentEvent):
+    before_tokens: int
+    after_tokens: int

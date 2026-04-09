@@ -27,6 +27,7 @@ _TOOL_DESCRIPTION = f"""\
 
 输出限制：
 - 最多返回 {MAX_RESULTS} 条结果，优先展示最近修改的文件
+- 返回结果中的文件路径为绝对路径，便于后续直接传给其他工具
 - 自动跳过二进制文件，仅搜索文本文件"""
 
 
@@ -49,45 +50,42 @@ def _sync_search(
     """
     同步执行搜索逻辑（整块在 to_thread 中运行）。
 
-    策略：先搜索收集匹配行，到上限后提前终止遍历，最后按文件修改时间排序。
+    策略：先按文件修改时间降序排列，再依次搜索并收集匹配行，
+    到上限后提前终止，确保结果优先来自最近修改的文件。
     返回 (结果行列表, 是否被截断)。
     """
-    # 收集匹配项：(mtime, 相对路径, 行号, 行内容)
-    matches: list[tuple[float, str, int, str]] = []
+    matches: list[str] = []
     truncated = False
+    files: list[tuple[float, Path]] = []
 
     for file in root.rglob("*"):
         try:
             if not file.is_file():
                 continue
+            if include and not wcfnmatch.fnmatch(file.name, include, flags=_FN_FLAGS):
+                continue
+            files.append((file.stat().st_mtime, file))
         except (PermissionError, OSError):
             continue
 
-        # include 过滤：用 wcmatch.fnmatch 支持 {js,ts} 花括号展开
-        if include and not wcfnmatch.fnmatch(file.name, include, flags=_FN_FLAGS):
-            continue
+    files.sort(key=lambda item: item[0], reverse=True)
 
-        # 读取文件，跳过二进制文件（一次 IO 完成检测和读取）
+    for _, file in files:
         text = _read_text_if_not_binary(file)
         if text is None:
             continue
 
-        rel = str(file.relative_to(root))
-        mtime = file.stat().st_mtime
-
+        abs_path = str(file)
         for lineno, line in enumerate(text.splitlines(), start=1):
             if regex.search(line):
-                matches.append((mtime, rel, lineno, line))
+                matches.append(f"{abs_path}:{lineno}:{line}")
                 if len(matches) >= MAX_RESULTS:
                     truncated = True
                     break
         if truncated:
             break
 
-    # 按文件修改时间降序排序
-    matches.sort(key=lambda m: m[0], reverse=True)
-    results = [f"{rel}:{lineno}:{line}" for _, rel, lineno, line in matches]
-    return results, truncated
+    return matches, truncated
 
 
 class GrepTool(BaseTool):

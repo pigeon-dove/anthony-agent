@@ -14,12 +14,20 @@ class LLMConfig(BaseModel):
     api_key: str = Field(default_factory=lambda: os.getenv("OPENAI_API_KEY", ""))
     base_url: str = Field(default_factory=lambda: os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"))
     model_name: str = Field(default_factory=lambda: os.getenv("MODEL_NAME", "gpt-4o"))
-    max_tokens: int = Field(default_factory=lambda: int(os.getenv("MAX_TOKENS", "4096")))
+    max_completion_tokens: int = Field(default_factory=lambda: int(os.getenv("MAX_COMPLETION_TOKENS", "4096")))
+    max_input_tokens: int = Field(default_factory=lambda: int(os.getenv("MAX_INPUT_TOKENS", "128000")))
+
+
+class CompactConfig(BaseModel):
+    """上下文压缩配置"""
+    # 当 token 数超过 max_input_tokens * compact_threshold 时触发 auto_compact
+    compact_threshold: float = 0.8
 
 
 class Settings(BaseModel):
     """全局配置，聚合所有子配置"""
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    compact: CompactConfig = Field(default_factory=CompactConfig)
     project_root: Path = PROJECT_ROOT
 
 

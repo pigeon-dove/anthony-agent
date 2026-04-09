@@ -1,8 +1,7 @@
-"""BashTool — 在持久 shell 会话中执行命令"""
+"""BashTool — 无状态 shell，每次调用独立执行"""
 
 import asyncio
 import os
-import time
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
@@ -11,11 +10,13 @@ _MAX_TIMEOUT = 600
 _MAX_OUTPUT = 30_000
 
 _TOOL_DESCRIPTION = """\
-在持久的 bash shell 会话中执行命令，**同步等待命令完成后返回结果**，可跨多次调用保持状态（环境变量、工作目录等）。
+在独立的 bash 子进程中执行命令，**每次调用都是全新的 shell 环境**，命令完成后进程立即销毁。
 
-执行模式：
-- 命令执行期间会阻塞后续操作，直到命令完成或超时才返回输出
-- 超时默认 30 秒，最大 600 秒；超时后命令会被强制终止，shell 会话将被重置（环境变量、工作目录等状态丢失）
+执行特性：
+- 每次调用都从项目根目录启动一个全新的 bash 进程，命令完成后自动销毁
+- 不保留跨调用状态：环境变量、工作目录、shell 变量等不会在调用间传递
+- 如需在特定目录执行，请在命令中使用 `cd /path && ...`
+- 超时默认 30 秒，最大 600 秒；超时后进程会被强制终止
 - 输出超过 30000 字符会被截断（保留首尾各半）
 
 适用场景：
@@ -30,18 +31,13 @@ _TOOL_DESCRIPTION = """\
 - 如果你不确定命令是否会快速结束，请优先使用 background_bash
 
 使用指南：
-- 命令用 `;` 或 `&&` 连接，不要用换行符
-- 优先使用绝对路径；仅在必须切换工作目录时使用 cd
+- 多条命令用 `;` 或 `&&` 连接，不要用换行符
+- 需要保留环境变量时，在同一次调用中完成所有依赖该变量的操作
 - 不要执行需要交互式输入的命令"""
 
 
 class BashTool(BaseTool):
-    """在持久的 shell 会话中执行命令并返回输出"""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self._process: asyncio.subprocess.Process | None = None
-        self._lock = asyncio.Lock()
+    """无状态 shell：每次调用创建独立子进程，执行完即销毁"""
 
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -60,73 +56,32 @@ class BashTool(BaseTool):
     async def execute(self, command: str, timeout: int = _TIMEOUT) -> ToolResult:
         timeout = min(timeout, _MAX_TIMEOUT)
 
-        async with self._lock:
-            proc = await self._ensure_alive()
-            assert proc.stdin and proc.stdout
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=os.getcwd(),
+        )
 
-            sentinel = f"__DONE_{os.urandom(8).hex()}__"
-            proc.stdin.write(f'{command}\necho "\\n{sentinel} $?"\n'.encode())
-            await proc.stdin.drain()
-
-            lines, exit_code = await self._read_until_sentinel(proc.stdout, sentinel, timeout)
-
-        # 超时
-        if lines is None:
+        try:
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+        except asyncio.TimeoutError:
             proc.kill()
-            self._process = None
+            await proc.wait()
             return ToolResult(
                 content=(
-                    f"命令超时（{timeout}s），已强制终止该命令并重置 shell 会话"
-                    f"（之前的环境变量、工作目录等状态已丢失）。"
+                    f"命令超时（{timeout}s），已强制终止。"
                     f"该命令可能是长时间运行的进程，请改用 background_bash 工具重新执行。"
                 ),
                 is_error=True,
             )
 
-        output = self._truncate("\n".join(lines))
+        output = self._truncate(stdout.decode(errors="replace").rstrip())
+        exit_code = proc.returncode or 0
 
         if exit_code != 0:
             return ToolResult(content=output or f"退出码 {exit_code}", is_error=True)
-        return ToolResult(content=output or "(无输出)")
-
-    async def _ensure_alive(self) -> asyncio.subprocess.Process:
-        """保证持久 shell 存活，必要时重新创建"""
-        if self._process is None or self._process.returncode is not None:
-            self._process = await asyncio.create_subprocess_shell(
-                "/bin/bash --norc --noprofile",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.STDOUT,
-                cwd=os.getcwd(),
-            )
-        return self._process
-
-    async def _read_until_sentinel(
-        self,
-        stdout: asyncio.StreamReader,
-        sentinel: str,
-        timeout: int,
-    ) -> tuple[list[str] | None, int]:
-        """逐行读取直到遇到 sentinel，返回 (lines, exit_code)。超时返回 (None, -1)。"""
-        deadline = time.monotonic() + timeout
-        lines: list[str] = []
-        try:
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise asyncio.TimeoutError
-                raw = await asyncio.wait_for(stdout.readline(), timeout=remaining)
-                if not raw:
-                    # 进程意外退出
-                    self._process = None
-                    return lines, 1
-                line = raw.decode(errors="replace").rstrip("\n")
-                if sentinel in line:
-                    code_str = line.split(sentinel)[-1].strip()
-                    return lines, int(code_str) if code_str.isdigit() else 1
-                lines.append(line)
-        except asyncio.TimeoutError:
-            return None, -1
+        return ToolResult(content=output or "（无输出）")
 
     @staticmethod
     def _truncate(output: str) -> str:

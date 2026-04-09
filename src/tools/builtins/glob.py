@@ -23,7 +23,8 @@ _TOOL_DESCRIPTION = """\
 - 查看目录直接子项 → 请使用 ls 工具
 
 输出限制：
-- 最多返回 200 条结果，按文件修改时间降序排列"""
+- 最多返回 200 条结果，按文件修改时间降序排列
+- 返回结果为绝对路径，便于后续直接传给其他工具"""
 
 
 def _sync_search(root: Path, pattern: str) -> list[Path]:
@@ -81,8 +82,8 @@ class GlobTool(BaseTool):
         truncated = len(files) > _MAX_RESULTS
         files = files[:_MAX_RESULTS]
 
-        # 输出相对于搜索根目录的路径
-        lines = [str(f.relative_to(root)) for f in files]
+        # 输出绝对路径，减少后续再次拼接路径时的出错概率
+        lines = [str(f) for f in files]
         if truncated:
             lines.append(f"\n(结果已截断，仅显示前 {_MAX_RESULTS} 条)")
         return ToolResult(content="\n".join(lines))
