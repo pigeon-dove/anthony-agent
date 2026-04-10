@@ -7,9 +7,11 @@ from src.tools.builtins.bash_background import BackgroundBashTool
 from src.tools.builtins.ls import LsTool
 from src.tools.builtins.glob import GlobTool
 from src.tools.builtins.grep import GrepTool
+from src.tools.builtins.think import ThinkTool
 
 # 导出所有内置工具类
 BUILTIN_TOOLS = [
     ReadFileTool, WriteFileTool, EditFileTool, MultiEditTool,
     BashTool, BackgroundBashTool, LsTool, GlobTool, GrepTool,
+    ThinkTool,
 ]

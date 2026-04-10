@@ -39,6 +39,9 @@ class Message(BaseModel):
         d: dict = {"role": self.role}
         if self.content is not None:
             d["content"] = self.content
+        elif self.tool_calls:
+            # OpenAI API 要求 assistant 消息有 tool_calls 时 content 必须存在
+            d["content"] = ""
         if self.tool_calls:
             d["tool_calls"] = [tc.to_dict() for tc in self.tool_calls]
         return d

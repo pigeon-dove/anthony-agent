@@ -15,6 +15,10 @@ from src.agent.events import (
     CompactStart, CompactComplete,
 )
 
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from src.ui.context_bar import ContextBar
+
 
 class EventRenderer:
     """将 Agent 事件流渲染为 Textual Widget。
@@ -35,8 +39,9 @@ class EventRenderer:
         CompactComplete: "_on_compact_complete",
     }
 
-    def __init__(self, area: VerticalScroll):
+    def __init__(self, area: VerticalScroll, context_bar: "ContextBar | None" = None):
         self._area = area
+        self._context_bar = context_bar
         self._last_reply = ""
         self._reset()
 
@@ -73,11 +78,10 @@ class EventRenderer:
         pending_results: dict[str, Static] = {}  # tool_call_id → result widget
         last_assistant_content = ""
 
-        # 检测是否压缩过（第一条是压缩标记）
+        # 检测是否压缩过（压缩后第一条 assistant 消息带 _compacted 标记）
         is_compacted = (
-            len(messages) >= 2
-            and messages[0].get("role") == "user"
-            and messages[0].get("content", "").startswith("[本次对话过长")
+            len(messages) >= 1
+            and messages[0].get("_compacted", False)
         )
         if is_compacted:
             widgets.append(Static(
@@ -275,6 +279,9 @@ class EventRenderer:
             self._last_reply_text = ""
 
     async def _on_usage_report(self, event: UsageReport) -> None:
+        # 更新上下文进度条
+        if self._context_bar is not None:
+            self._context_bar.update_usage(event.prompt_tokens)
         await self._area.mount(Static(
             f"[dim]\\[Usage] prompt={event.prompt_tokens} "
             f"completion={event.completion_tokens} total={event.total_tokens}[/]",

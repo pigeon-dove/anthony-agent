@@ -35,6 +35,7 @@ class Agent:
         self._session = session_manager
         self._messages: list[dict] = []
         self._cancelled = False
+        self._last_prompt_tokens: int = 0
 
     @property
     def is_cancelled(self) -> bool:
@@ -55,7 +56,44 @@ class Agent:
     def load_history(self) -> None:
         if self._session:
             raw = self._session.load_messages()
-            self._messages = [{k: v for k, v in m.items() if k != "usage"} for m in raw]
+            # 从原始消息中提取最后一次 prompt_tokens（供 UI 恢复进度条）
+            for m in reversed(raw):
+                usage = m.get("usage")
+                if usage and "prompt_tokens" in usage:
+                    self._last_prompt_tokens = usage["prompt_tokens"]
+                    break
+            messages = [{k: v for k, v in m.items() if k != "usage"} for m in raw]
+            repaired = self._repair_messages(messages)
+            if len(repaired) != len(messages):
+                # 有修复，回写持久化
+                self._session.overwrite_messages(repaired)
+            self._messages = repaired
+
+    @staticmethod
+    def _repair_messages(messages: list[dict]) -> list[dict]:
+        """修复中途退出导致的不完整消息序列。
+
+        检查所有 assistant 消息中的 tool_calls，如果对应的 tool result 缺失，
+        补一个占位消息，避免发送给 API 时报错。
+        """
+        existing_results = {
+            m["tool_call_id"] for m in messages
+            if m.get("role") == "tool" and m.get("tool_call_id")
+        }
+        repaired: list[dict] = []
+        for m in messages:
+            repaired.append(m)
+            if m.get("role") == "assistant" and m.get("tool_calls"):
+                for tc in m["tool_calls"]:
+                    tc_id = tc.get("id")
+                    if tc_id and tc_id not in existing_results:
+                        repaired.append({
+                            "role": "tool",
+                            "tool_call_id": tc_id,
+                            "content": "[上次会话中途退出，此工具未执行]",
+                        })
+                        existing_results.add(tc_id)
+        return repaired
 
     # ── 核心循环 ──────────────────────────────────────────
 
@@ -172,7 +210,15 @@ class Agent:
         tool_context = self._registry.collect_context()
         if tool_context:
             prompt += "\n\n" + tool_context
-        return [{"role": "system", "content": prompt}] + self._messages
+        # 过滤掉内部标记字段（如 _compacted），不发送给 API
+        # 同时确保 assistant 消息的 content 不为缺失（API 要求必须存在）
+        cleaned = []
+        for m in self._messages:
+            d = {k: v for k, v in m.items() if not k.startswith("_")}
+            if d.get("role") == "assistant" and "content" not in d:
+                d["content"] = ""
+            cleaned.append(d)
+        return [{"role": "system", "content": prompt}] + cleaned
 
     def _persist(self, api_dict: dict, storage_dict: dict | None = None) -> None:
         self._messages.append(api_dict)

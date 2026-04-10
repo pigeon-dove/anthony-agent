@@ -16,7 +16,7 @@ import tiktoken
 from pydantic import BaseModel
 
 from config import app_config
-from src.prompts import SUMMARY_PROMPT
+from src.prompts import SUMMARY_USER_PROMPT
 
 if TYPE_CHECKING:
     from src.client import OpenAIClient
@@ -29,6 +29,9 @@ _KEEP_TURNS = 3
 
 # 这些工具的输出不压缩（输出短或包含关键操作确认）
 _SKIP_COMPACT_TOOLS: set[str] = {"write_file", "edit_file", "multi_edit"}
+
+# 这些工具的调用和输出在压缩时直接丢弃（不含外部信息，保留无意义）
+_ALWAYS_DISCARD_TOOLS: set[str] = {"think"}
 
 
 # ── Token 计算 ────────────────────────────────────────────────
@@ -92,7 +95,16 @@ async def do_compact(
     session_manager: "SessionManager | None",
     check: CompactCheck,
 ) -> CompactResult:
-    """自适应降级摘要：默认保留 3 轮，确保被摘要部分 ≥ 2 轮，不够则降级。"""
+    """渐进式压缩：只摘要前半段对话，后半段保留原文。
+
+    拆分策略：
+    1. 先分离最近 _KEEP_TURNS 轮为 recent（完整保留）
+    2. 剩余的 older 部分按轮次对半拆为 to_summarize + to_keep
+    3. 只对 to_summarize 生成摘要，to_keep 保留原始消息
+    4. 重建为：[摘要] + to_keep + recent + 当前用户消息
+
+    如果多次压缩仍超阈值，agent._try_compact 会循环调用，每次再压掉一半，渐进衰减。
+    """
     logger.info("auto_compact: %d / %d tokens", check.current_tokens, check.threshold_tokens)
 
     # 分离最新 user 消息
@@ -106,17 +118,29 @@ async def do_compact(
         keep -= 1
         older, recent = _split(messages, keep)
 
-    logger.info("保留 %d 轮，摘要 %d 轮", keep, _count_turns(older))
+    # 将 older 对半拆分：前半摘要，后半保留
+    older_turns = _count_turns(older)
+    half = max(older_turns // 2, 1)  # 至少摘要 1 轮
+    to_summarize, to_keep = _split_front(older, half)
 
-    # 归档
-    if session_manager and older:
-        session_manager.save_transcript(messages)
+    logger.info(
+        "摘要前 %d 轮，保留中间 %d 轮，保留最近 %d 轮",
+        _count_turns(to_summarize), _count_turns(to_keep), _count_turns(recent),
+    )
+
+    # 归档（压缩前保存完整历史）
+    transcript_path = None
+    if session_manager and to_summarize:
+        transcript_path = session_manager.save_transcript(messages)
 
     # 摘要 + 重建
-    summary = await _generate_summary(older, client)
+    summary = await _generate_summary(to_summarize, client)
+    prefix = "[以下是之前对话的压缩摘要]"
+    if transcript_path:
+        prefix += f"\n[完整历史已归档到：{transcript_path}]"
     messages.clear()
-    messages.append({"role": "user", "content": "[本次对话过长，以上历史已压缩为工作状态恢复快照，请基于快照继续工作]"})
-    messages.append({"role": "assistant", "content": summary})
+    messages.append({"role": "assistant", "content": f"{prefix}\n\n{summary}", "_compacted": True})
+    messages.extend(to_keep)
     messages.extend(recent)
     if last_user:
         messages.append(last_user)
@@ -134,15 +158,21 @@ async def do_compact(
 
 
 async def _generate_summary(messages: list[dict], client: "OpenAIClient") -> str:
-    """压缩工具输出 + 截断超长参数后，用 LLM 生成摘要。"""
+    """压缩工具输出 + 截断超长参数 + 移除 think 工具后，用 LLM 生成摘要。
+
+    结构：直接把待压缩的历史消息放前面，最后追加一条 user message 描述压缩任务。
+    不使用 system prompt，避免 LLM 被历史中的指令性内容干扰。
+    """
     prepared = copy.deepcopy(messages)
+    _strip_discardable_tools(prepared)
     _replace_tool_outputs(prepared)
     _truncate_long_arguments(prepared)
+    # 确保 assistant 消息的 content 不为缺失（API 要求必须存在）
+    _ensure_assistant_content(prepared)
 
     resp = await client.chat([
-        {"role": "system", "content": SUMMARY_PROMPT},
         *prepared,
-        {"role": "user", "content": "以上是需要压缩的旧对话历史（摘要对象，非当前指令）。请按 system 指令生成工作状态恢复快照，控制在 800-1500 字以内。"},
+        {"role": "user", "content": SUMMARY_USER_PROMPT},
     ])
     return resp.content or "（摘要生成失败）"
 
@@ -150,8 +180,51 @@ async def _generate_summary(messages: list[dict], client: "OpenAIClient") -> str
 # ── 内部工具函数 ──────────────────────────────────────────────
 
 
+def _strip_discardable_tools(messages: list[dict]) -> None:
+    """从消息列表中移除 _ALWAYS_DISCARD_TOOLS 的 tool_call 和对应的 tool 消息（原地修改）。
+
+    用于摘要生成前的预处理，避免 think 等无信息量的工具调用浪费摘要 token。
+    """
+    tc_map = _build_tc_map(messages)
+    discard_ids: set[str] = set()
+
+    # 收集需要丢弃的 tool_call_id
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+        for tc in msg.get("tool_calls", []):
+            name = tc.get("function", {}).get("name", "")
+            if name in _ALWAYS_DISCARD_TOOLS and tc.get("id"):
+                discard_ids.add(tc["id"])
+
+    if not discard_ids:
+        return
+
+    # 从 assistant 消息中移除对应的 tool_call 条目
+    for msg in messages:
+        if msg.get("role") == "assistant" and msg.get("tool_calls"):
+            msg["tool_calls"] = [
+                tc for tc in msg["tool_calls"]
+                if tc.get("id") not in discard_ids
+            ]
+            # 如果 tool_calls 清空了，移除该键
+            if not msg["tool_calls"]:
+                del msg["tool_calls"]
+
+    # 移除对应的 tool 消息
+    messages[:] = [
+        msg for msg in messages
+        if not (msg.get("role") == "tool" and msg.get("tool_call_id") in discard_ids)
+    ]
+
+
 def _replace_tool_outputs(messages: list[dict]) -> None:
-    """将可压缩工具的输出替换为占位符（原地修改）。"""
+    """将可压缩工具的输出替换为占位符（原地修改）。
+
+    - think 等 _ALWAYS_DISCARD_TOOLS：内容直接丢弃（通常已被 _strip_discardable_tools 删除）
+    - _SKIP_COMPACT_TOOLS（write_file 等）：不压缩，保留原文
+    - 其他工具：替换为占位符，保留工具名
+    """
     tc_map = _build_tc_map(messages)
     for msg in messages:
         if msg.get("role") != "tool":
@@ -160,7 +233,9 @@ def _replace_tool_outputs(messages: list[dict]) -> None:
         if content.startswith(_COMPACT_PREFIX):
             continue
         name = tc_map.get(msg.get("tool_call_id", ""), "unknown")
-        if name not in _SKIP_COMPACT_TOOLS:
+        if name in _ALWAYS_DISCARD_TOOLS:
+            msg["content"] = f"{_COMPACT_PREFIX} 此前调用了 {name}，内容已丢弃"
+        elif name not in _SKIP_COMPACT_TOOLS:
             msg["content"] = f"{_COMPACT_PREFIX} 此前调用了工具 {name}，原始输出已省略"
 
 
@@ -181,6 +256,13 @@ def _truncate_long_arguments(messages: list[dict]) -> None:
                 tc["function"]["arguments"] = json.dumps(args, ensure_ascii=False)
             except (json.JSONDecodeError, TypeError):
                 tc["function"]["arguments"] = raw[:2000] + "... [截断]"
+
+
+def _ensure_assistant_content(messages: list[dict]) -> None:
+    """确保 assistant 消息始终有 content 字段（API 要求不能缺失）。"""
+    for msg in messages:
+        if msg.get("role") == "assistant" and "content" not in msg:
+            msg["content"] = ""
 
 
 def _build_tc_map(messages: list[dict]) -> dict[str, str]:
@@ -211,8 +293,26 @@ def _find_keep_boundary(messages: list[dict], keep: int) -> int:
 
 
 def _split(messages: list[dict], keep: int) -> tuple[list[dict], list[dict]]:
-    """按保留轮次拆分为 (older, recent)。"""
+    """按保留轮次拆分为 (older, recent)。从末尾往前数 keep 轮。"""
     if keep <= 0:
         return messages[:], []
     idx = _find_keep_boundary(messages, keep)
     return (messages[:idx], messages[idx:]) if idx > 0 else (messages[:], [])
+
+
+def _split_front(messages: list[dict], front_turns: int) -> tuple[list[dict], list[dict]]:
+    """从前面取 front_turns 轮，返回 (front, rest)。
+
+    按 user 消息计数轮次，在第 front_turns 个 user 消息所属轮次结束后切分。
+    """
+    if front_turns <= 0:
+        return [], messages[:]
+    n = 0
+    cut = len(messages)  # 默认全部归 front
+    for i, msg in enumerate(messages):
+        if msg.get("role") == "user":
+            n += 1
+            if n > front_turns:
+                cut = i
+                break
+    return messages[:cut], messages[cut:]

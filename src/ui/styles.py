@@ -7,10 +7,15 @@ APP_CSS = """\
     scrollbar-size: 1 1;
 }
 
-#input-box {
+#bottom-bar {
     dock: bottom;
     height: auto;
-    min-height: 3;
+    max-height: 10;
+}
+
+#input-box {
+    height: auto;
+    min-height: 1;
     max-height: 8;
     margin: 0 0;
 }

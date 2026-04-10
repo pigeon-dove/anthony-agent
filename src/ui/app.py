@@ -7,7 +7,7 @@ import asyncio
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import VerticalScroll
+from textual.containers import Vertical, VerticalScroll
 from textual.widgets import Footer, Static
 from textual import work
 
@@ -16,6 +16,7 @@ from src.tools import ToolRegistry
 from src.ui.styles import APP_CSS
 from src.ui.renderer import EventRenderer
 from src.ui.chat_input import ChatInput
+from src.ui.context_bar import ContextBar
 
 
 class AgentApp(App):
@@ -39,16 +40,19 @@ class AgentApp(App):
 
     def compose(self) -> ComposeResult:
         yield VerticalScroll(id="message-area")
-        yield ChatInput(
-            placeholder="输入消息，Enter 发送，Shift+Enter 换行",
-            id="input-box",
-        )
+        with Vertical(id="bottom-bar"):
+            yield ContextBar(id="context-bar")
+            yield ChatInput(
+                placeholder="输入消息，Enter 发送，Shift+Enter 换行",
+                id="input-box",
+            )
         yield Footer()
 
     async def on_mount(self) -> None:
         self.title = f"Anthony Agent — {self._session_id}"
         area = self.query_one("#message-area", VerticalScroll)
-        self._renderer = EventRenderer(area)
+        context_bar = self.query_one("#context-bar", ContextBar)
+        self._renderer = EventRenderer(area, context_bar=context_bar)
         input_box = self.query_one("#input-box", ChatInput)
         input_box.focus()
         # 有历史消息时：先显示加载提示，等首帧渲染完再异步加载
@@ -86,6 +90,15 @@ class AgentApp(App):
         input_box = self.query_one("#input-box", ChatInput)
         input_box.disabled = False
         input_box.focus()
+        # 恢复历史后更新上下文进度条
+        self._update_context_bar_from_history()
+
+    def _update_context_bar_from_history(self) -> None:
+        """用 agent 加载历史时缓存的 prompt_tokens 更新 ContextBar。"""
+        tokens = self._agent._last_prompt_tokens
+        if tokens > 0:
+            context_bar = self.query_one("#context-bar", ContextBar)
+            context_bar.update_usage(tokens)
 
     def on_chat_input_submitted(self, event: ChatInput.Submitted) -> None:
         event.stop()

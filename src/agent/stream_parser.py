@@ -3,6 +3,7 @@
 STREAM_FIELDS: dict[str, str] = {
     "write_file": "content",
     "edit_file": "new_string",
+    "think": "thought",
 }
 
 _ESCAPE_MAP = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}
