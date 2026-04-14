@@ -1,7 +1,6 @@
 """WebFetchTool — 抓取网页内容并转为 Markdown"""
 
 import asyncio
-from typing import Optional
 
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
@@ -28,7 +27,8 @@ _TOOL_DESCRIPTION = """\
 原网页中可点击的超链接文本会用 [[双方括号]] 标记（如 [[百度百科]]），表示该文本有对应的 URL。
 
 **链接提取模式：** 传入 link_keywords（关键词列表），只返回链接文本匹配关键词的链接及其完整 URL，不返回正文。
-用于获取阅读模式中 [[标记文本]] 对应的真实 URL。"""
+
+**典型用法：** 先用阅读模式获取网页内容，看到感兴趣的 [[链接文本]] 后，再次调用并传入 link_keywords 获取其真实 URL。"""
 
 
 class WebFetchTool(BaseTool):
@@ -59,7 +59,7 @@ class WebFetchTool(BaseTool):
             },
         )
 
-    async def execute(self, url: str, link_keywords: Optional[list[str]] = None) -> ToolResult:
+    async def execute(self, url: str, link_keywords: list[str] | None = None) -> ToolResult:
         try:
             html = await self._fetch(url)
         except Exception as e:

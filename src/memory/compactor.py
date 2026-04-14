@@ -1,7 +1,7 @@
 """上下文压缩 — 两层策略
 
 Layer 1 (micro_compact): 每次 LLM 调用前，将 3 轮之前的工具输出替换为占位符。
-Layer 2 (auto_compact): token 超阈值时，自适应降级保留轮次，用 LLM 摘要旧对话。
+Layer 2 (auto_compact): token 超阈值时，用 LLM 将旧对话压缩为更短的多轮对话。
 """
 
 from __future__ import annotations
@@ -9,6 +9,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from functools import cache
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,10 @@ _SKIP_COMPACT_TOOLS: set[str] = {"write_file", "edit_file", "multi_edit"}
 
 # 这些工具的调用和输出在压缩时直接丢弃（不含外部信息，保留无意义）
 _ALWAYS_DISCARD_TOOLS: set[str] = {"think"}
+
+# 分隔符，用于解析 LLM 输出的压缩对话
+_SEP_USER = "---USER---"
+_SEP_ASSISTANT = "---ASSISTANT---"
 
 
 # ── Token 计算 ────────────────────────────────────────────────
@@ -95,52 +100,61 @@ async def do_compact(
     session_manager: "SessionManager | None",
     check: CompactCheck,
 ) -> CompactResult:
-    """渐进式压缩：只摘要前半段对话，后半段保留原文。
+    """将旧对话压缩为更短的多轮对话，保留 user/assistant 交替结构。
 
     拆分策略：
-    1. 先分离最近 _KEEP_TURNS 轮为 recent（完整保留）
-    2. 剩余的 older 部分按轮次对半拆为 to_summarize + to_keep
-    3. 只对 to_summarize 生成摘要，to_keep 保留原始消息
-    4. 重建为：[摘要] + to_keep + recent + 当前用户消息
+    1. 分离最近 _KEEP_TURNS 轮为 recent（完整保留）
+    2. 剩余部分交给 LLM 压缩为更短的多轮对话
+    3. 重建为：[压缩后的对话] + recent + 当前用户消息
 
-    如果多次压缩仍超阈值，agent._try_compact 会循环调用，每次再压掉一半，渐进衰减。
+    如果压缩后仍超阈值，agent._try_compact 会循环调用。
     """
     logger.info("auto_compact: %d / %d tokens", check.current_tokens, check.threshold_tokens)
 
     # 分离最新 user 消息
     last_user = messages.pop() if messages and messages[-1].get("role") == "user" else None
 
-    # 自适应选择保留轮次：确保 older ≥ 2 轮，不够就降级
+    # 分离最近几轮
     total_turns = _count_turns(messages)
     keep = max(min(total_turns - 1, _KEEP_TURNS), 0)
-    older, recent = _split(messages, keep)
-    while _count_turns(older) < 2 and keep > 0:
-        keep -= 1
-        older, recent = _split(messages, keep)
+    to_compress, recent = _split(messages, keep)
 
-    # 将 older 对半拆分：前半摘要，后半保留
-    older_turns = _count_turns(older)
-    half = max(older_turns // 2, 1)  # 至少摘要 1 轮
-    to_summarize, to_keep = _split_front(older, half)
+    if _count_turns(to_compress) < 1:
+        # 不够压，恢复原样
+        if last_user:
+            messages.append(last_user)
+        return CompactResult(
+            before_tokens=check.current_tokens,
+            after_tokens=check.current_tokens,
+            threshold_tokens=check.threshold_tokens,
+        )
 
     logger.info(
-        "摘要前 %d 轮，保留中间 %d 轮，保留最近 %d 轮",
-        _count_turns(to_summarize), _count_turns(to_keep), _count_turns(recent),
+        "压缩前 %d 轮，保留最近 %d 轮",
+        _count_turns(to_compress), _count_turns(recent),
     )
 
-    # 归档（压缩前保存完整历史）
+    # 归档完整历史
     transcript_path = None
-    if session_manager and to_summarize:
+    if session_manager:
         transcript_path = session_manager.save_transcript(messages)
 
-    # 摘要 + 重建
-    summary = await _generate_summary(to_summarize, client)
-    prefix = "[以下是之前对话的压缩摘要]"
+    # LLM 压缩为多轮对话
+    compressed = await _compress_to_dialogue(to_compress, client)
+
+    # 在压缩对话的第一条 user 消息前面加上标记
+    marker_text = "[以下是早期对话的压缩版本]"
     if transcript_path:
-        prefix += f"\n[完整历史已归档到：{transcript_path}]"
+        marker_text += f"\n[完整历史已归档到：{transcript_path}]"
+    if compressed and compressed[0]["role"] == "user":
+        compressed[0]["content"] = marker_text + "\n\n" + compressed[0]["content"]
+        compressed[0]["_compact_marker"] = True
+    else:
+        compressed.insert(0, {"role": "user", "content": marker_text, "_compact_marker": True})
+
+    # 重建 messages
     messages.clear()
-    messages.append({"role": "assistant", "content": f"{prefix}\n\n{summary}", "_compacted": True})
-    messages.extend(to_keep)
+    messages.extend(compressed)
     messages.extend(recent)
     if last_user:
         messages.append(last_user)
@@ -154,27 +168,67 @@ async def do_compact(
     return CompactResult(before_tokens=check.current_tokens, after_tokens=after, threshold_tokens=check.threshold_tokens)
 
 
-# ── 摘要生成 ──────────────────────────────────────────────────
+# ── 压缩对话生成 ─────────────────────────────────────────────
 
 
-async def _generate_summary(messages: list[dict], client: "OpenAIClient") -> str:
-    """压缩工具输出 + 截断超长参数 + 移除 think 工具后，用 LLM 生成摘要。
-
-    结构：直接把待压缩的历史消息放前面，最后追加一条 user message 描述压缩任务。
-    不使用 system prompt，避免 LLM 被历史中的指令性内容干扰。
-    """
+async def _compress_to_dialogue(messages: list[dict], client: "OpenAIClient") -> list[dict]:
+    """预处理 + LLM 压缩 + 解析，返回压缩后的 messages 列表。"""
     prepared = copy.deepcopy(messages)
     _strip_discardable_tools(prepared)
     _replace_tool_outputs(prepared)
     _truncate_long_arguments(prepared)
-    # 确保 assistant 消息的 content 不为缺失（API 要求必须存在）
     _ensure_assistant_content(prepared)
 
     resp = await client.chat([
         *prepared,
         {"role": "user", "content": SUMMARY_USER_PROMPT},
     ])
-    return resp.content or "（摘要生成失败）"
+
+    raw = resp.content or ""
+    compressed = _parse_dialogue(raw)
+    if not compressed:
+        # 解析失败时回退：把 LLM 原始输出当作单条 assistant 摘要
+        logger.warning("压缩对话解析失败，回退为单条摘要")
+        return [{"role": "assistant", "content": raw, "_compacted": True}]
+    return compressed
+
+
+def _parse_dialogue(text: str) -> list[dict]:
+    """解析 LLM 输出的 ---USER--- / ---ASSISTANT--- 格式为 messages 列表。"""
+    # 按分隔符切分
+    parts = re.split(r"---USER---|---ASSISTANT---", text)
+    # 找出每个分隔符的顺序
+    seps = re.findall(r"---USER---|---ASSISTANT---", text)
+
+    if not seps:
+        return []
+
+    result: list[dict] = []
+    for i, sep in enumerate(seps):
+        content = parts[i + 1].strip() if i + 1 < len(parts) else ""
+        if not content:
+            continue
+        role = "user" if sep == _SEP_USER else "assistant"
+        # 确保 user/assistant 交替
+        if result and result[-1]["role"] == role:
+            # 同角色连续，合并到上一条
+            result[-1]["content"] += "\n" + content
+        else:
+            result.append({"role": role, "content": content})
+
+    # 验证：必须以 user 开头
+    if result and result[0]["role"] != "user":
+        result.insert(0, {"role": "user", "content": "[对话起始]"})
+
+    # 验证：必须以 assistant 结尾（否则后续接 recent 时角色可能冲突）
+    if result and result[-1]["role"] == "user":
+        result.append({"role": "assistant", "content": "[继续]"})
+
+    # 标记为已压缩
+    for msg in result:
+        msg["_compacted"] = True
+
+    return result
 
 
 # ── 内部工具函数 ──────────────────────────────────────────────
@@ -299,20 +353,3 @@ def _split(messages: list[dict], keep: int) -> tuple[list[dict], list[dict]]:
     idx = _find_keep_boundary(messages, keep)
     return (messages[:idx], messages[idx:]) if idx > 0 else (messages[:], [])
 
-
-def _split_front(messages: list[dict], front_turns: int) -> tuple[list[dict], list[dict]]:
-    """从前面取 front_turns 轮，返回 (front, rest)。
-
-    按 user 消息计数轮次，在第 front_turns 个 user 消息所属轮次结束后切分。
-    """
-    if front_turns <= 0:
-        return [], messages[:]
-    n = 0
-    cut = len(messages)  # 默认全部归 front
-    for i, msg in enumerate(messages):
-        if msg.get("role") == "user":
-            n += 1
-            if n > front_turns:
-                cut = i
-                break
-    return messages[:cut], messages[cut:]

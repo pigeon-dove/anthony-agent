@@ -27,6 +27,13 @@ _TOOL_DESCRIPTION = """\
 - 返回结果为绝对路径，便于后续直接传给其他工具"""
 
 
+def _safe_mtime(f: Path) -> float:
+    try:
+        return f.stat().st_mtime
+    except (PermissionError, OSError):
+        return 0.0
+
+
 def _sync_search(root: Path, pattern: str) -> list[Path]:
     """同步执行 glob 匹配 + 过滤 + 排序（整块在 to_thread 中运行）"""
     full_pattern = str(root / pattern)
@@ -38,7 +45,7 @@ def _sync_search(root: Path, pattern: str) -> list[Path]:
                 files.append(p)
         except (PermissionError, OSError):
             continue
-    files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+    files.sort(key=lambda f: _safe_mtime(f), reverse=True)
     return files
 
 

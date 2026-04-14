@@ -1,5 +1,6 @@
 """WebSearchTool — 联网搜索，基于 Tavily Search API"""
 
+import asyncio
 import os
 
 from tavily import TavilyClient
@@ -9,10 +10,20 @@ from src.tools.base import BaseTool, ToolDefinition, ToolResult
 _MAX_RESULTS = 5
 
 _TOOL_DESCRIPTION = """\
-联网搜索（基于 Tavily API），返回最相关的网页结果，最多 5 条。中英文关键词均支持。
+联网搜索（基于 Tavily API），返回最相关的网页结果，每条包含标题、URL 和内容摘要，最多 5 条。
 
-每条结果包含：标题、可直接访问的 URL、内容摘要。
-可配合 web_fetch 使用返回的 URL 抓取网页详情。"""
+适用场景：
+- 查询实时信息：最新文档、新闻事件、技术方案对比等
+- 查找特定资源：库的官方文档、API 参考、错误信息的解决方案等
+- 中英文关键词均支持，建议用英文搜索技术内容以获得更好的结果
+
+不适用场景：
+- 已知确切 URL → 请直接使用 web_fetch 工具抓取
+- 项目内的代码或文件搜索 → 请使用 grep / glob 工具
+
+使用指南：
+- 关键词尽量具体，避免过于宽泛的查询
+- 搜索结果中的 URL 可直接传给 web_fetch 获取完整网页内容"""
 
 
 class WebSearchTool(BaseTool):
@@ -46,7 +57,9 @@ class WebSearchTool(BaseTool):
             )
 
         try:
-            response = self._client.search(query=query, max_results=_MAX_RESULTS)
+            response = await asyncio.to_thread(
+                self._client.search, query=query, max_results=_MAX_RESULTS,
+            )
         except Exception as e:
             return ToolResult(content=f"搜索失败: {e}", is_error=True)
 

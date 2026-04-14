@@ -11,6 +11,7 @@ from src.tools.base import BaseTool, ToolDefinition, ToolResult
 MAX_RESULTS = 200  # 单次搜索最大结果行数
 _BINARY_CHECK_SIZE = 512  # 二进制文件检测：检查前 512 字节是否包含 \x00
 _FN_FLAGS = wcfnmatch.BRACE  # wcmatch 标志：支持 {} 花括号展开
+_SKIP_DIRS = frozenset({".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache", "dist", "build"})
 
 _TOOL_DESCRIPTION = f"""\
 在目录中递归搜索匹配正则表达式的**文件内容**，输出格式为 `文件路径:行号:内容`。
@@ -28,7 +29,7 @@ _TOOL_DESCRIPTION = f"""\
 输出限制：
 - 最多返回 {MAX_RESULTS} 条结果，优先展示最近修改的文件
 - 返回结果中的文件路径为绝对路径，便于后续直接传给其他工具
-- 自动跳过二进制文件，仅搜索文本文件"""
+- 自动跳过二进制文件和常见非项目目录（.git、node_modules、.venv、__pycache__ 等），仅搜索文本文件"""
 
 
 def _read_text_if_not_binary(file: Path) -> str | None:
@@ -60,6 +61,8 @@ def _sync_search(
 
     for file in root.rglob("*"):
         try:
+            if _SKIP_DIRS & set(file.relative_to(root).parts):
+                continue
             if not file.is_file():
                 continue
             if include and not wcfnmatch.fnmatch(file.name, include, flags=_FN_FLAGS):

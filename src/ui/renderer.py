@@ -87,14 +87,14 @@ class EventRenderer:
         pending_results: dict[str, Static] = {}  # tool_call_id → result widget
         last_assistant_content = ""
 
-        # 检测是否压缩过（压缩后第一条 assistant 消息带 _compacted 标记）
+        # 检测是否压缩过（压缩后第一条消息带 _compact_marker 标记）
         is_compacted = (
             len(messages) >= 1
-            and messages[0].get("_compacted", False)
+            and messages[0].get("_compact_marker", False)
         )
         if is_compacted:
             widgets.append(Static(
-                "[dim]\\[已恢复] 之前的对话已被压缩为摘要[/]",
+                "[dim]\\[已恢复] 早期对话已被压缩[/]",
                 classes="history-hint",
             ))
 
