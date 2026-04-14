@@ -2,12 +2,12 @@ from src.agent.agent import Agent
 from src.agent.events import (
     AgentEvent, TextDelta, ToolCallStart, ToolCallArgumentsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
-    CompactStart, CompactComplete,
+    CompactStart, CompactComplete, TaskProgress,
 )
 
 __all__ = [
     "Agent",
     "AgentEvent", "TextDelta", "ToolCallStart", "ToolCallArgumentsDelta",
     "ToolCallResult", "ResponseComplete", "UsageReport",
-    "CompactStart", "CompactComplete",
+    "CompactStart", "CompactComplete", "TaskProgress",
 ]

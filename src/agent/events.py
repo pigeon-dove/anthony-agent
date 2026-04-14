@@ -45,3 +45,12 @@ class CompactStart(AgentEvent):
 class CompactComplete(AgentEvent):
     before_tokens: int
     after_tokens: int
+
+class TaskProgress(AgentEvent):
+    """子 Agent 执行进度（用于 task 工具的实时状态展示）
+
+    is_text=False: 进度行，显示在滚动窗口中
+    is_text=True: 子 Agent 的文本输出，流式渲染到 Markdown
+    """
+    line: str
+    is_text: bool = False

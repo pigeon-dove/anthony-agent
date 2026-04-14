@@ -4,7 +4,7 @@ import argparse
 
 from src.client import OpenAIClient
 from src.tools import ToolRegistry
-from src.tools.builtins import BUILTIN_TOOLS
+from src.tools.builtins import BUILTIN_TOOLS, TaskTool
 from src.agent import Agent
 from src.memory import SessionManager
 from src.prompts import build_system_prompt
@@ -29,11 +29,13 @@ def main():
     else:
         session_id = session_mgr.init()
 
+    client = OpenAIClient()
     registry = ToolRegistry()
     registry.register_many([tool() for tool in BUILTIN_TOOLS])
+    registry.register(TaskTool(client=client, registry=registry))
 
     agent = Agent(
-        client=OpenAIClient(),
+        client=client,
         registry=registry,
         system_prompt=build_system_prompt(
             session_id=session_id,

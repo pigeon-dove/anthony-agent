@@ -61,6 +61,17 @@ APP_CSS = """\
     padding: 0 1;
 }
 
+/* task 子 Agent 进度窗口（卡片内部，固定高度滚动） */
+.task-progress-window {
+    color: $text-muted;
+    margin: 0 0 0 1;
+    padding: 0 1;
+    height: auto;
+    max-height: 13;
+    background: $surface-darken-1;
+    border: round $primary-darken-2;
+}
+
 /* 状态信息（usage / compact） */
 .status-info {
     color: $text-muted;

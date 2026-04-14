@@ -17,6 +17,7 @@ from src.ui.styles import APP_CSS
 from src.ui.renderer import EventRenderer
 from src.ui.chat_input import ChatInput
 from src.ui.context_bar import ContextBar
+from src.ui.banner import BannerWidget
 
 
 class AgentApp(App):
@@ -55,6 +56,8 @@ class AgentApp(App):
         self._renderer = EventRenderer(area, context_bar=context_bar)
         input_box = self.query_one("#input-box", ChatInput)
         input_box.focus()
+        # 显示启动 Banner
+        await area.mount(BannerWidget())
         # 有历史消息时：先显示加载提示，等首帧渲染完再异步加载
         if self._agent._messages:
             input_box.disabled = True
@@ -120,6 +123,9 @@ class AgentApp(App):
             await self._renderer.render_event_stream(self._agent.run(user_input))
             if self._agent.is_cancelled:
                 await self._renderer.render_cancelled()
+        except asyncio.CancelledError:
+            # Ctrl+D 退出时 worker 被取消，静默处理
+            return
         except Exception as e:
             traceback.print_exc()
             try:
@@ -158,6 +164,8 @@ class AgentApp(App):
         pass
 
     async def action_quit(self) -> None:
+        # 先通知 Agent 取消（会传播到子 Agent），再取消 worker
+        self._agent.cancel()
         self.workers.cancel_all()
         try:
             await asyncio.wait_for(self._tool_registry.cleanup_all(), timeout=2)

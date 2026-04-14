@@ -12,7 +12,7 @@ from textual.widgets._markdown import MarkdownStream
 from src.agent.events import (
     AgentEvent, TextDelta, ToolCallStart, ToolCallArgumentsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
-    CompactStart, CompactComplete,
+    CompactStart, CompactComplete, TaskProgress,
 )
 
 from typing import TYPE_CHECKING
@@ -28,11 +28,14 @@ class EventRenderer:
 
     _SCROLL_THRESHOLD = 3
 
+    _TASK_WINDOW_LINES = 10  # task 工具进度窗口显示的行数
+
     _HANDLERS: dict[type, str] = {
         TextDelta: "_on_text_delta",
         ToolCallArgumentsDelta: "_on_tool_args_delta",
         ToolCallStart: "_on_tool_call_start",
         ToolCallResult: "_on_tool_call_result",
+        TaskProgress: "_on_task_progress",
         ResponseComplete: "_on_response_complete",
         UsageReport: "_on_usage_report",
         CompactStart: "_on_compact_start",
@@ -53,11 +56,17 @@ class EventRenderer:
         # 工具卡片状态
         self._tool_card: Collapsible | None = None
         self._tool_card_result: Static | None = None
+        # task 工具进度窗口状态
+        self._task_progress_widget: Static | None = None
+        self._task_progress_lines: list[str] = []
+        self._task_text_buffer: str = ""  # 子 Agent 文本输出的行缓冲
         # 流式参数输出状态（融入卡片内部）
         self._streaming_tool = False
         self._tool_stream_static: Static | None = None
         self._tool_stream_header = ""
         self._tool_stream_content = ""
+        # 延迟 anchor：等到有实际内容输出时才锚定，避免内容少时被推到底部
+        self._needs_anchor = False
 
     # ── 公开接口 ──────────────────────────────────────────
 
@@ -147,13 +156,12 @@ class EventRenderer:
 
         # 一次性挂载所有 widget，只触发一次布局刷新
         await self._area.mount_all(widgets)
-        self._area.anchor()
+        self._area.scroll_end(animate=False)
 
     async def render_user_message(self, text: str) -> None:
         escaped = rich_escape(text)
         await self._area.mount(Static(f"> {escaped}", classes="user-msg"))
-        self._area.anchor()
-        self._auto_scroll()
+        self._area.scroll_end(animate=False)
 
     async def render_error(self, error: Exception) -> None:
         await self._area.mount(
@@ -167,12 +175,15 @@ class EventRenderer:
 
     async def render_event_stream(self, events: AsyncIterable[AgentEvent]) -> None:
         self._reset()
-        self._area.anchor()
+        self._needs_anchor = True
         try:
             async for event in events:
                 await self._dispatch(event)
         finally:
-            await self._stop_md_stream()
+            try:
+                await self._stop_md_stream()
+            except Exception:
+                pass
 
     # ── 事件分发 ──────────────────────────────────────────
 
@@ -251,7 +262,58 @@ class EventRenderer:
         self._tool_stream_static = None
         self._auto_scroll()
 
+    async def _on_task_progress(self, event: TaskProgress) -> None:
+        """子 Agent 进度事件处理。
+
+        所有内容（进度行 + 子 Agent 文本输出）都在卡片内的滚动窗口中显示。
+        is_text=True 时，文本按行追加到窗口（流式效果）。
+        """
+        if event.is_text:
+            # 子 Agent 的文本输出，也追加到进度窗口中流式滚动
+            # 按换行拆分，逐行追加（保持窗口滚动效果）
+            # TextDelta 可能是片段（不含换行），先累积到 buffer
+            self._task_text_buffer += event.line
+            # 如果 buffer 中有完整行，逐行追加到窗口
+            while "\n" in self._task_text_buffer:
+                line, self._task_text_buffer = self._task_text_buffer.split("\n", 1)
+                if line.strip():  # 跳过空行
+                    self._task_progress_lines.append(f"  {line.strip()}")
+        else:
+            # 进度行（工具调用等）
+            self._task_progress_lines.append(event.line)
+
+        # 只保留最近 N 行
+        if len(self._task_progress_lines) > self._TASK_WINDOW_LINES:
+            self._task_progress_lines = self._task_progress_lines[-self._TASK_WINDOW_LINES:]
+
+        display = "\n".join(self._task_progress_lines)
+        escaped = rich_escape(display)
+        content = f"[dim]\\[Sub Agent][/]\n{escaped}"
+
+        if self._task_progress_widget is not None:
+            self._task_progress_widget.update(content)
+        elif self._tool_card is not None:
+            # 首次收到进度，在卡片内创建进度窗口 widget
+            self._task_progress_widget = Static(content, classes="task-progress-window")
+            await self._tool_card.mount(self._task_progress_widget, before=self._tool_card_result)
+        self._auto_scroll()
+
     async def _on_tool_call_result(self, event: ToolCallResult) -> None:
+        # task 工具完成时：flush 残余文本 buffer，然后清理
+        if event.tool_name == "task" and self._task_text_buffer.strip():
+            self._task_progress_lines.append(f"  {self._task_text_buffer.strip()}")
+            if len(self._task_progress_lines) > self._TASK_WINDOW_LINES:
+                self._task_progress_lines = self._task_progress_lines[-self._TASK_WINDOW_LINES:]
+            if self._task_progress_widget is not None:
+                display = "\n".join(self._task_progress_lines)
+                escaped = rich_escape(display)
+                self._task_progress_widget.update(f"[dim]\\[Sub Agent][/]\n{escaped}")
+
+        # 清理 task 进度窗口状态
+        self._task_progress_widget = None
+        self._task_progress_lines = []
+        self._task_text_buffer = ""
+
         label = RichText("✔ 结果:\n", style="green")
         body = RichText(str(event.result))
         content = RichText.assemble(label, body)
@@ -306,10 +368,12 @@ class EventRenderer:
     # ── 内部辅助 ──────────────────────────────────────────
 
     def _auto_scroll(self) -> None:
-        if self._area._anchored and not self._area._anchor_released:
+        if self._needs_anchor:
+            self._needs_anchor = False
+            self._area.scroll_end(animate=False)
             return
         if self._is_near_bottom():
-            self._area.anchor()
+            self._area.scroll_end(animate=False)
 
     def _is_near_bottom(self) -> bool:
         return (

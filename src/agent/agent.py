@@ -56,7 +56,6 @@ class Agent:
     def load_history(self) -> None:
         if self._session:
             raw = self._session.load_messages()
-            # 从原始消息中提取最后一次 prompt_tokens（供 UI 恢复进度条）
             for m in reversed(raw):
                 usage = m.get("usage")
                 if usage and "prompt_tokens" in usage:
@@ -65,17 +64,12 @@ class Agent:
             messages = [{k: v for k, v in m.items() if k != "usage"} for m in raw]
             repaired = self._repair_messages(messages)
             if len(repaired) != len(messages):
-                # 有修复，回写持久化
                 self._session.overwrite_messages(repaired)
             self._messages = repaired
 
     @staticmethod
     def _repair_messages(messages: list[dict]) -> list[dict]:
-        """修复中途退出导致的不完整消息序列。
-
-        检查所有 assistant 消息中的 tool_calls，如果对应的 tool result 缺失，
-        补一个占位消息，避免发送给 API 时报错。
-        """
+        """修复中途退出导致的不完整消息序列。"""
         existing_results = {
             m["tool_call_id"] for m in messages
             if m.get("role") == "tool" and m.get("tool_call_id")
@@ -173,16 +167,35 @@ class Agent:
 
     async def _execute_tools(self, msg: Message) -> AsyncGenerator[AgentEvent, None]:
         for tc in msg.tool_calls:
+            if self._cancelled:
+                break
+
             args = json.loads(tc.arguments)
             yield ToolCallStart(tool_name=tc.name, arguments=args)
 
-            result = await self._registry.execute(tc.name, args)
-            self._persist(result.to_message_dict(tc.id))
+            tool = self._registry.get(tc.name)
+            stream = tool.run_streaming(**args) if tool else None
 
-            yield ToolCallResult(tool_name=tc.name, result=result.content)
+            if stream is not None:
+                # 流式工具：转发事件流，最后一个 ToolCallResult 用于持久化
+                result_event: ToolCallResult | None = None
+                async for event in stream:
+                    if isinstance(event, ToolCallResult):
+                        result_event = event
+                    else:
+                        yield event
+                # 持久化结果
+                content = result_event.result if result_event else "[流式工具无输出]"
+                self._persist({"role": "tool", "tool_call_id": tc.id, "content": content})
+                yield result_event or ToolCallResult(tool_name=tc.name, result=content)
+            else:
+                # 普通工具：execute + 持久化
+                result = await self._registry.execute(tc.name, args)
+                self._persist(result.to_message_dict(tc.id))
+                yield ToolCallResult(tool_name=tc.name, result=result.content)
 
     async def _try_compact(self) -> AsyncGenerator[AgentEvent, None]:
-        for _ in range(3):  # 最多压缩 3 次
+        for _ in range(3):
             check = check_compact(messages=self._messages, system_prompt=self._system_prompt)
             if not check:
                 return
@@ -210,8 +223,6 @@ class Agent:
         tool_context = self._registry.collect_context()
         if tool_context:
             prompt += "\n\n" + tool_context
-        # 过滤掉内部标记字段（如 _compacted），不发送给 API
-        # 同时确保 assistant 消息的 content 不为缺失（API 要求必须存在）
         cleaned = []
         for m in self._messages:
             d = {k: v for k, v in m.items() if not k.startswith("_")}
