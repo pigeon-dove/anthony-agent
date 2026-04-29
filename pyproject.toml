@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anthony-agent"
+version = "0.1.0"
+description = "Anthony Agent — AI Coding Assistant"
+readme = { content-type = "text/markdown", text = "Anthony Agent — AI Coding Assistant" }
+requires-python = ">=3.10"
+authors = [{ name = "Anthony Xue" }]
+dependencies = [
+    "openai>=2.28.0",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.2",
+    "tiktoken>=0.9.0",
+    "wcmatch>=10.0",
+    "rich>=14.0.0",
+    "textual>=3.0.0",
+    "tavily-python>=0.5.0",
+    "curl_cffi>=0.7.0",
+    "html2text>=2024.2.26",
+    "jsonlines>=4.0.0",
+]
+
+[project.scripts]
+anthony = "anthony_agent.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["anthony_agent*"]
+exclude = ["tests*", "docs*", "resource*", ".anthony*", ".venv*"]
