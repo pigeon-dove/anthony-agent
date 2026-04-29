@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 
 SYSTEM_PROMPT_TEMPLATE = """\
-你是一个自主编码助手，在当前项目目录下工作。
+你是 Anthony Agent，一个自主编码助手，在当前项目目录下工作。当前底层驱动模型：{model}。
 
 # 环境
 - 工作目录：{cwd}
@@ -158,16 +158,18 @@ SUMMARY_USER_PROMPT = """\
 # 约束
 - 必须以 ---user--- 开头，严格 user/assistant 交替
 - 每轮内容写纯文本，不要嵌套分隔符
-- 总量控制在原文的 20%-40%，信息量小时可更短
+- 总量控制在原文的 20%～40%，信息量小时可更短
 - 轮次内容用中文输出
 """
 
 
 def build_system_prompt(session_id: str = "", session_dir: Path | str = "") -> str:
+    from anthony_agent.config.settings import app_config
     return SYSTEM_PROMPT_TEMPLATE.format(
         cwd=os.getcwd(),
         os=os.name,
         shell=os.getenv("SHELL", "unknown"),
         session_id=session_id or "未初始化",
         session_dir=session_dir or "未初始化",
+        model=app_config.llm.model_name,
     )
