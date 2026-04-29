@@ -11,7 +11,7 @@ from typing import AsyncGenerator, TYPE_CHECKING
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 from src.tools.registry import ToolRegistry
-from src.agent.events import AgentEvent, TextDelta, ToolCallStart, ToolCallResult, TaskProgress
+from src.agent.events import AgentEvent, TextDelta, ToolCallStart, ToolCallResult, ToolResultDelta
 
 if TYPE_CHECKING:
     from src.client import OpenAIClient
@@ -104,29 +104,39 @@ class TaskTool(BaseTool):
             session_manager=None,
         )
 
-        # 运行子任务，将子 Agent 事件转换为 TaskProgress
+        # 运行子任务，将子 Agent 事件转换为 ToolResultDelta
         turn_count = 0
         text_parts: list[str] = []
+        text_buffer = ""  # 文本行缓冲
 
         async for event in sub_agent.run(description):
             if isinstance(event, ToolCallStart):
                 args_summary = ", ".join(
                     f"{k}={repr(v)[:50]}" for k, v in list(event.arguments.items())[:3]
                 )
-                yield TaskProgress(line=f"▶ {event.tool_name}({args_summary})")
+                yield ToolResultDelta(tool_name="task", content=f"▶ {event.tool_name}({args_summary})")
                 turn_count += 1
                 if turn_count >= _MAX_TURNS:
                     sub_agent.cancel()
-                    yield TaskProgress(line=f"⚠ 已达最大工具调用次数 ({_MAX_TURNS})，自动终止")
+                    yield ToolResultDelta(tool_name="task", content=f"⚠ 已达最大工具调用次数 ({_MAX_TURNS})，自动终止")
                     break
 
             elif isinstance(event, ToolCallResult):
                 preview = _make_result_preview(event.result)
-                yield TaskProgress(line=f"  ✔ {preview}")
+                yield ToolResultDelta(tool_name="task", content=f"  ✔ {preview}")
 
             elif isinstance(event, TextDelta):
                 text_parts.append(event.content)
-                yield TaskProgress(line=event.content, is_text=True)
+                # 按行缓冲：凑够完整行才产出
+                text_buffer += event.content
+                while "\n" in text_buffer:
+                    line, text_buffer = text_buffer.split("\n", 1)
+                    if line.strip():
+                        yield ToolResultDelta(tool_name="task", content=f"  {line.strip()}")
+
+        # flush 残余文本
+        if text_buffer.strip():
+            yield ToolResultDelta(tool_name="task", content=f"  {text_buffer.strip()}")
 
         # 产出最终结果（供 agent 持久化）
         final_text = "".join(text_parts).strip()

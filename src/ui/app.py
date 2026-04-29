@@ -15,6 +15,23 @@ from src.agent import Agent
 from src.tools import ToolRegistry
 from src.ui.styles import APP_CSS
 from src.ui.renderer import EventRenderer
+
+_NEAR_BOTTOM_THRESHOLD = 3  # 判定“接近底部”的行距阈值
+
+
+class _MessageArea(VerticalScroll):
+    """带滚动位置监听的消息区域，用户向上滚时通知 renderer 暂停自动滚动。"""
+
+    def watch_scroll_y(self, old: float, new: float) -> None:
+        """scroll_y 变化时判断是否在底部，通知 renderer。"""
+        super().watch_scroll_y(old, new)
+        app = self.app
+        if isinstance(app, AgentApp) and app._renderer is not None:
+            is_at_bottom = (
+                self.max_scroll_y == 0
+                or new >= self.max_scroll_y - _NEAR_BOTTOM_THRESHOLD
+            )
+            app._renderer.notify_user_scroll(is_at_bottom)
 from src.ui.chat_input import ChatInput
 from src.ui.context_bar import ContextBar
 from src.ui.banner import BannerWidget
@@ -28,6 +45,7 @@ class AgentApp(App):
         Binding("ctrl+d", "quit", "退出", priority=True),
         Binding("ctrl+y", "copy_last_reply", "复制回复", priority=True),
         Binding("ctrl+s", "toggle_mouse", "选择模式", priority=True),
+        Binding("ctrl+k", "compact", "压缩上下文", priority=True),
         Binding("ctrl+q", "noop", show=False),
     ]
 
@@ -40,7 +58,7 @@ class AgentApp(App):
         self._mouse_enabled: bool = True
 
     def compose(self) -> ComposeResult:
-        yield VerticalScroll(id="message-area")
+        yield _MessageArea(id="message-area")
         with Vertical(id="bottom-bar"):
             yield ContextBar(id="context-bar")
             yield ChatInput(
@@ -51,7 +69,7 @@ class AgentApp(App):
 
     async def on_mount(self) -> None:
         self.title = f"Anthony Agent — {self._session_id}"
-        area = self.query_one("#message-area", VerticalScroll)
+        area = self.query_one("#message-area", _MessageArea)
         context_bar = self.query_one("#context-bar", ContextBar)
         self._renderer = EventRenderer(area, context_bar=context_bar)
         input_box = self.query_one("#input-box", ChatInput)
@@ -61,7 +79,11 @@ class AgentApp(App):
         # 有历史消息时：先显示加载提示，等首帧渲染完再异步加载
         if self._agent._messages:
             input_box.disabled = True
-            n = sum(1 for m in self._agent._messages if m.get("role") == "user")
+            # 只统计真实用户发言，跳过工具注入的图片 user message
+            n = sum(
+                1 for m in self._agent._messages
+                if m.get("role") == "user" and not m.get("_tool_call_id")
+            )
             await area.mount(Static(
                 f"[dim]正在恢复历史会话（{n} 轮对话）…[/]",
                 id="history-loading",
@@ -76,18 +98,27 @@ class AgentApp(App):
         # 移除加载提示
         loading = self.query_one("#history-loading", Static)
         await loading.remove()
-        area = self.query_one("#message-area", VerticalScroll)
+        area = self.query_one("#message-area", _MessageArea)
         # 隐藏区域，避免用户看到从顶部滚到底部的过程
         area.display = False
-        # 批量挂载历史
-        await self._renderer.render_history(self._agent._messages)
-        # 滚到底部后再显示
-        area.scroll_end(animate=False)
-        self.call_after_refresh(self._reveal_history)
+        try:
+            # 批量挂载历史
+            await self._renderer.render_history(self._agent._messages)
+            # 滚到底部后再显示
+            area.scroll_end(animate=False)
+        except Exception as e:
+            # 历史渲染失败时兜底：展示错误，避免界面永远空白卡死
+            traceback.print_exc()
+            await area.mount(Static(
+                f"[red]\\[历史渲染失败][/] {e}\n继续使用不受影响。",
+                classes="status-info",
+            ))
+        finally:
+            self.call_after_refresh(self._reveal_history)
 
     def _reveal_history(self) -> None:
         """历史加载完成后显示消息区域并启用输入。"""
-        area = self.query_one("#message-area", VerticalScroll)
+        area = self.query_one("#message-area", _MessageArea)
         area.scroll_end(animate=False)
         area.display = True
         input_box = self.query_one("#input-box", ChatInput)
@@ -111,8 +142,29 @@ class AgentApp(App):
         if user_input.lower() in ("exit", "quit"):
             self.exit()
             return
+        if user_input.lower() == "/compact":
+            self.query_one("#input-box", ChatInput).disabled = True
+            self._run_compact()
+            return
         self.query_one("#input-box", ChatInput).disabled = True
         self._run_agent(user_input)
+
+    @work(exclusive=True, exit_on_error=False)
+    async def _run_compact(self) -> None:
+        """用户手动触发上下文压缩。"""
+        input_box = self.query_one("#input-box", ChatInput)
+        assert self._renderer is not None
+        try:
+            await self._renderer.render_event_stream(self._agent.force_compact())
+        except Exception as e:
+            traceback.print_exc()
+            try:
+                await self._renderer.render_error(e)
+            except Exception:
+                pass
+        finally:
+            input_box.disabled = False
+            input_box.focus()
 
     @work(exclusive=True, exit_on_error=False)
     async def _run_agent(self, user_input: str) -> None:
@@ -155,6 +207,13 @@ class AgentApp(App):
                 "选择模式 [b]OFF[/b] — 鼠标交互已恢复",
                 timeout=2,
             )
+
+    def action_compact(self) -> None:
+        """手动触发上下文压缩。"""
+        if self.query_one("#input-box", ChatInput).disabled:
+            return  # 正在执行中，不要打断
+        self.query_one("#input-box", ChatInput).disabled = True
+        self._run_compact()
 
     def action_cancel(self) -> None:
         if self.query_one("#input-box", ChatInput).disabled:

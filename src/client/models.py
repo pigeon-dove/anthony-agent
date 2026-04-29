@@ -28,6 +28,7 @@ class ToolCall(BaseModel):
 class Message(BaseModel):
     role: str = "assistant"
     content: str | None = None
+    reasoning_content: str | None = None  # DeepSeek/Qwen 等 thinking 模型的推理内容，需原样回传
     tool_calls: list[ToolCall] = Field(default_factory=list)
     usage: Usage = Field(default_factory=Usage)
 
@@ -42,6 +43,8 @@ class Message(BaseModel):
         elif self.tool_calls:
             # OpenAI API 要求 assistant 消息有 tool_calls 时 content 必须存在
             d["content"] = ""
+        if self.reasoning_content:
+            d["reasoning_content"] = self.reasoning_content
         if self.tool_calls:
             d["tool_calls"] = [tc.to_dict() for tc in self.tool_calls]
         return d
@@ -63,6 +66,7 @@ class Message(BaseModel):
 
 class StreamDelta(BaseModel):
     content: str | None = None
+    reasoning_content: str | None = None
     tool_call_index: int | None = None
     tool_call_id: str | None = None
     tool_call_name: str | None = None

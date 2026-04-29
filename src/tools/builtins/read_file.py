@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
+from src.utils.image import is_image_file
 
 _MAX_LINES = 2000  # 默认最多读取行数
 _MAX_LINE_CHARS = 2000  # 单行最大字符数
@@ -16,6 +17,7 @@ _TOOL_DESCRIPTION = """\
 - 查看文件完整内容或指定行范围
 - 编辑前确认文件当前状态
 - 可同时发起多个读取调用以提高效率
+- 读取图片文件（png/jpg/jpeg/gif/webp）时，图片会自动注入到下一条消息，你可直接看到图片内容
 
 输出限制：
 - 默认最多 2000 行，单行超过 2000 字符会截断
@@ -101,6 +103,13 @@ class ReadFileTool(BaseTool):
             return ToolResult(content=f"文件不存在: {path}", is_error=True)
         if not p.is_file():
             return ToolResult(content=f"不是文件: {path}", is_error=True)
+
+        # 图片文件：不读文本，返回带 images 的结果，ToolResult.to_messages 会自动注入图片 user message
+        if is_image_file(p):
+            return ToolResult(
+                content=f"已读取图片: {p}\n图片已作为附件注入到下一条消息，请根据图片内容回答。",
+                images=[str(p)],
+            )
 
         start = (offset - 1) if offset and offset > 0 else 0
         count = limit if limit and limit > 0 else _MAX_LINES

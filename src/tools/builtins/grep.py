@@ -27,7 +27,7 @@ _TOOL_DESCRIPTION = f"""\
 - 查看目录结构 → 请使用 ls 工具
 
 输出限制：
-- 最多返回 {MAX_RESULTS} 条结果，优先展示最近修改的文件
+- 最多返回 {MAX_RESULTS} 条结果
 - 返回结果中的文件路径为绝对路径，便于后续直接传给其他工具
 - 自动跳过二进制文件和常见非项目目录（.git、node_modules、.venv、__pycache__ 等），仅搜索文本文件"""
 
@@ -48,32 +48,21 @@ def _sync_search(
     regex: re.Pattern,
     include: str | None,
 ) -> tuple[list[str], bool]:
-    """
-    同步执行搜索逻辑（整块在 to_thread 中运行）。
-
-    策略：先按文件修改时间降序排列，再依次搜索并收集匹配行，
-    到上限后提前终止，确保结果优先来自最近修改的文件。
-    返回 (结果行列表, 是否被截断)。
-    """
+    """同步递归搜索，边遍历边匹配，找够即停。"""
     matches: list[str] = []
     truncated = False
-    files: list[tuple[float, Path]] = []
 
     for file in root.rglob("*"):
         try:
-            if _SKIP_DIRS & set(file.relative_to(root).parts):
+            if any(p in _SKIP_DIRS for p in file.relative_to(root).parts):
                 continue
             if not file.is_file():
                 continue
             if include and not wcfnmatch.fnmatch(file.name, include, flags=_FN_FLAGS):
                 continue
-            files.append((file.stat().st_mtime, file))
         except (PermissionError, OSError):
             continue
 
-    files.sort(key=lambda item: item[0], reverse=True)
-
-    for _, file in files:
         text = _read_text_if_not_binary(file)
         if text is None:
             continue

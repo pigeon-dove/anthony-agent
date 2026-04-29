@@ -10,9 +10,9 @@ from textual.widgets import Static, Markdown, Collapsible
 from textual.widgets._markdown import MarkdownStream
 
 from src.agent.events import (
-    AgentEvent, TextDelta, ToolCallStart, ToolCallArgumentsDelta,
+    AgentEvent, TextDelta, ToolCallStart, ToolArgsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
-    CompactStart, CompactComplete, TaskProgress,
+    CompactStart, CompactComplete, ToolResultDelta,
 )
 
 from typing import TYPE_CHECKING
@@ -26,16 +26,14 @@ class EventRenderer:
     职责单一：消费 AsyncIterable[AgentEvent]，不依赖 Agent 类型。
     """
 
-    _SCROLL_THRESHOLD = 3
-
     _TASK_WINDOW_LINES = 10  # task 工具进度窗口显示的行数
 
     _HANDLERS: dict[type, str] = {
         TextDelta: "_on_text_delta",
-        ToolCallArgumentsDelta: "_on_tool_args_delta",
+        ToolArgsDelta: "_on_tool_args_delta",
         ToolCallStart: "_on_tool_call_start",
         ToolCallResult: "_on_tool_call_result",
-        TaskProgress: "_on_task_progress",
+        ToolResultDelta: "_on_tool_result_delta",
         ResponseComplete: "_on_response_complete",
         UsageReport: "_on_usage_report",
         CompactStart: "_on_compact_start",
@@ -59,7 +57,6 @@ class EventRenderer:
         # task 工具进度窗口状态
         self._task_progress_widget: Static | None = None
         self._task_progress_lines: list[str] = []
-        self._task_text_buffer: str = ""  # 子 Agent 文本输出的行缓冲
         # 流式参数输出状态（融入卡片内部）
         self._streaming_tool = False
         self._tool_stream_static: Static | None = None
@@ -67,6 +64,8 @@ class EventRenderer:
         self._tool_stream_content = ""
         # 延迟 anchor：等到有实际内容输出时才锚定，避免内容少时被推到底部
         self._needs_anchor = False
+        # 用户主动向上滚动标志：为 True 时暂停自动滚动
+        self._user_scrolled_away = False
 
     # ── 公开接口 ──────────────────────────────────────────
 
@@ -100,7 +99,14 @@ class EventRenderer:
 
         for msg in messages:
             role = msg.get("role", "")
+            # 跳过工具注入的图片 user message：它的 content 是 list（多模态 parts），
+            # 作为 tool_call 的附件，不需要单独渲染成用户发言。
+            if msg.get("_tool_call_id"):
+                continue
             content = msg.get("content", "") or ""
+            # 防御：若 content 意外为 list（多模态），扁平化为纯文本占位
+            if isinstance(content, list):
+                content = "[多模态内容]"
 
             if role == "user":
                 escaped = rich_escape(content)
@@ -173,6 +179,13 @@ class EventRenderer:
             Static("[yellow]\\[中断][/] 输出已被用户终止", classes="status-info")
         )
 
+    def notify_user_scroll(self, is_at_bottom: bool) -> None:
+        """由 App 层的滚动监听调用，更新用户滚动状态。
+
+        用户往上滑 → 停止跟随；用户滑回底部 → 恢复跟随。
+        """
+        self._user_scrolled_away = not is_at_bottom
+
     async def render_event_stream(self, events: AsyncIterable[AgentEvent]) -> None:
         self._reset()
         self._needs_anchor = True
@@ -205,7 +218,7 @@ class EventRenderer:
             await self._md_stream.write(event.content)
         self._auto_scroll()
 
-    async def _on_tool_args_delta(self, event: ToolCallArgumentsDelta) -> None:
+    async def _on_tool_args_delta(self, event: ToolArgsDelta) -> None:
         if self._streaming_text:
             self._streaming_text = False
             self._md_widget = None
@@ -228,7 +241,7 @@ class EventRenderer:
             await self._area.mount(self._tool_card)
             self._streaming_tool = True
 
-        self._tool_stream_content += event.delta
+        self._tool_stream_content += event.content
         if self._tool_stream_static is not None:
             self._tool_stream_static.update(
                 self._tool_stream_header + rich_escape(self._tool_stream_content)
@@ -262,25 +275,9 @@ class EventRenderer:
         self._tool_stream_static = None
         self._auto_scroll()
 
-    async def _on_task_progress(self, event: TaskProgress) -> None:
-        """子 Agent 进度事件处理。
-
-        所有内容（进度行 + 子 Agent 文本输出）都在卡片内的滚动窗口中显示。
-        is_text=True 时，文本按行追加到窗口（流式效果）。
-        """
-        if event.is_text:
-            # 子 Agent 的文本输出，也追加到进度窗口中流式滚动
-            # 按换行拆分，逐行追加（保持窗口滚动效果）
-            # TextDelta 可能是片段（不含换行），先累积到 buffer
-            self._task_text_buffer += event.line
-            # 如果 buffer 中有完整行，逐行追加到窗口
-            while "\n" in self._task_text_buffer:
-                line, self._task_text_buffer = self._task_text_buffer.split("\n", 1)
-                if line.strip():  # 跳过空行
-                    self._task_progress_lines.append(f"  {line.strip()}")
-        else:
-            # 进度行（工具调用等）
-            self._task_progress_lines.append(event.line)
+    async def _on_tool_result_delta(self, event: ToolResultDelta) -> None:
+        """流式工具结果事件处理，内容显示在卡片内的滚动窗口中。"""
+        self._task_progress_lines.append(event.content)
 
         # 只保留最近 N 行
         if len(self._task_progress_lines) > self._TASK_WINDOW_LINES:
@@ -299,20 +296,9 @@ class EventRenderer:
         self._auto_scroll()
 
     async def _on_tool_call_result(self, event: ToolCallResult) -> None:
-        # task 工具完成时：flush 残余文本 buffer，然后清理
-        if event.tool_name == "task" and self._task_text_buffer.strip():
-            self._task_progress_lines.append(f"  {self._task_text_buffer.strip()}")
-            if len(self._task_progress_lines) > self._TASK_WINDOW_LINES:
-                self._task_progress_lines = self._task_progress_lines[-self._TASK_WINDOW_LINES:]
-            if self._task_progress_widget is not None:
-                display = "\n".join(self._task_progress_lines)
-                escaped = rich_escape(display)
-                self._task_progress_widget.update(f"[dim]\\[Sub Agent][/]\n{escaped}")
-
         # 清理 task 进度窗口状态
         self._task_progress_widget = None
         self._task_progress_lines = []
-        self._task_text_buffer = ""
 
         label = RichText("✔ 结果:\n", style="green")
         body = RichText(str(event.result))
@@ -351,11 +337,15 @@ class EventRenderer:
         ))
 
     async def _on_compact_start(self, event: CompactStart) -> None:
-        await self._area.mount(Static(
-            f"[dim]\\[Compact] 上下文压缩中... "
-            f"({event.current_tokens} tokens，阈值 {event.threshold_tokens})[/]",
-            classes="status-info",
-        ))
+        if event.manual:
+            text = f"[dim]\\[Compact] 手动压缩中... ({event.current_tokens} tokens)[/]"
+        else:
+            text = (
+                f"[dim]\\[Compact] 上下文压缩中... "
+                f"({event.current_tokens} tokens，阈值 {event.threshold_tokens})[/]"
+            )
+        await self._area.mount(Static(text, classes="status-info"))
+        self._auto_scroll()
 
     async def _on_compact_complete(self, event: CompactComplete) -> None:
         saved = event.before_tokens - event.after_tokens
@@ -364,22 +354,20 @@ class EventRenderer:
             f"{event.after_tokens} tokens (节省 {saved})[/]",
             classes="status-info",
         ))
+        if self._context_bar is not None:
+            self._context_bar.update_usage(event.after_tokens)
+        self._auto_scroll()
 
     # ── 内部辅助 ──────────────────────────────────────────
 
     def _auto_scroll(self) -> None:
         if self._needs_anchor:
             self._needs_anchor = False
+            self._user_scrolled_away = False
             self._area.scroll_end(animate=False)
             return
-        if self._is_near_bottom():
+        if not self._user_scrolled_away:
             self._area.scroll_end(animate=False)
-
-    def _is_near_bottom(self) -> bool:
-        return (
-            self._area.max_scroll_y == 0
-            or self._area.scroll_y >= self._area.max_scroll_y - self._SCROLL_THRESHOLD
-        )
 
     def _end_text_stream(self) -> None:
         self._streaming_text = False

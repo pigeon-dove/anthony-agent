@@ -17,6 +17,7 @@ class StreamResponse:
     def __init__(self, raw_stream):
         self._raw = raw_stream
         self._content_parts: list[str] = []
+        self._reasoning_parts: list[str] = []
         self._tc_map: dict[int, dict] = {}
         self._usage = Usage()
 
@@ -36,6 +37,11 @@ class StreamResponse:
                 continue
 
             delta = choice.delta
+            reasoning = getattr(delta, "reasoning_content", None)
+            if reasoning:
+                self._reasoning_parts.append(reasoning)
+                yield StreamDelta(reasoning_content=reasoning)
+
             if delta.content:
                 self._content_parts.append(delta.content)
                 yield StreamDelta(content=delta.content)
@@ -62,6 +68,7 @@ class StreamResponse:
     def message(self) -> Message:
         return Message(
             content="".join(self._content_parts) or None,
+            reasoning_content="".join(self._reasoning_parts) or None,
             tool_calls=[
                 ToolCall(id=v["id"], name=v["name"], arguments=v["arguments"])
                 for _, v in sorted(self._tc_map.items())
@@ -137,6 +144,7 @@ class OpenAIClient:
         return Message(
             role=msg.role,
             content=msg.content,
+            reasoning_content=getattr(msg, "reasoning_content", None),
             tool_calls=[
                 ToolCall(id=tc.id, name=tc.function.name, arguments=tc.function.arguments)
                 for tc in (msg.tool_calls or [])

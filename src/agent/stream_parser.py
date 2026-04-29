@@ -67,8 +67,3 @@ class ArgumentsStreamParser:
         if any(t.startswith(buf) for t in self._triggers):
             return None
         return False
-
-
-def _unescape(ch: str) -> str:
-    """处理 JSON 字符串转义"""
-    return {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}.get(ch, f"\\{ch}")

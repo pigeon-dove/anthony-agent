@@ -16,15 +16,16 @@ class ToolCallStart(AgentEvent):
     arguments: dict
 
 
-class ToolCallArgumentsDelta(AgentEvent):
+class ToolArgsDelta(AgentEvent):
     tool_name: str
     field_name: str
-    delta: str
+    content: str
 
 
 class ToolCallResult(AgentEvent):
     tool_name: str
     result: str
+    is_error: bool = False
 
 
 class ResponseComplete(AgentEvent):
@@ -40,17 +41,15 @@ class UsageReport(AgentEvent):
 class CompactStart(AgentEvent):
     current_tokens: int
     threshold_tokens: int
+    manual: bool = False
 
 
 class CompactComplete(AgentEvent):
     before_tokens: int
     after_tokens: int
 
-class TaskProgress(AgentEvent):
-    """子 Agent 执行进度（用于 task 工具的实时状态展示）
 
-    is_text=False: 进度行，显示在滚动窗口中
-    is_text=True: 子 Agent 的文本输出，流式渲染到 Markdown
-    """
-    line: str
-    is_text: bool = False
+class ToolResultDelta(AgentEvent):
+    """流式工具的结果增量（如 task 工具的子 Agent 进度）"""
+    tool_name: str
+    content: str

@@ -16,6 +16,8 @@ class LLMConfig(BaseModel):
     model_name: str = Field(default_factory=lambda: os.getenv("MODEL_NAME", "gpt-4o"))
     max_completion_tokens: int = Field(default_factory=lambda: int(os.getenv("MAX_COMPLETION_TOKENS", "4096")))
     max_input_tokens: int = Field(default_factory=lambda: int(os.getenv("MAX_INPUT_TOKENS", "128000")))
+    # 当前模型是否支持视觉输入（image_url content part）。DeepSeek 等纯文本模型需设为 false
+    supports_vision: bool = Field(default_factory=lambda: os.getenv("SUPPORTS_VISION", "true").lower() == "true")
 
 
 class CompactConfig(BaseModel):

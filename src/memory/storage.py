@@ -1,7 +1,9 @@
-"""JSONL 读写工具"""
+"""JSONL 读写工具（基于 jsonlines 库）"""
 
-import json
+import sys
 from pathlib import Path
+
+import jsonlines
 
 
 class JSONLStorage:
@@ -15,28 +17,40 @@ class JSONLStorage:
 
     def append(self, record: dict) -> None:
         self._ensure_dir()
-        with open(self._path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        with jsonlines.open(self._path, mode="a") as writer:
+            writer.write(record)
 
     def append_many(self, records: list[dict]) -> None:
         if not records:
             return
         self._ensure_dir()
-        with open(self._path, "a", encoding="utf-8") as f:
-            for record in records:
-                f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        with jsonlines.open(self._path, mode="a") as writer:
+            writer.write_all(records)
 
     def read_all(self) -> list[dict]:
         if not self._path.exists():
             return []
-        with open(self._path, "r", encoding="utf-8") as f:
-            return [json.loads(line) for line in f if line.strip()]
+        results: list[dict] = []
+        bad = 0
+        with jsonlines.open(self._path, mode="r") as reader:
+            while True:
+                try:
+                    results.append(reader.read(type=dict))
+                except EOFError:
+                    break
+                except jsonlines.InvalidLineError:
+                    bad += 1
+        if bad:
+            print(
+                f"[storage] {self._path.name} 跳过 {bad} 行无法解析的数据",
+                file=sys.stderr,
+            )
+        return results
 
     def overwrite(self, records: list[dict]) -> None:
         self._ensure_dir()
-        with open(self._path, "w", encoding="utf-8") as f:
-            for record in records:
-                f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+        with jsonlines.open(self._path, mode="w") as writer:
+            writer.write_all(records)
 
     def exists(self) -> bool:
         return self._path.exists()
@@ -44,8 +58,8 @@ class JSONLStorage:
     def count(self) -> int:
         if not self._path.exists():
             return 0
-        with open(self._path, "r", encoding="utf-8") as f:
-            return sum(1 for line in f if line.strip())
+        with jsonlines.open(self._path, mode="r") as reader:
+            return sum(1 for _ in reader.iter(type=dict, skip_invalid=True))
 
     def _ensure_dir(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

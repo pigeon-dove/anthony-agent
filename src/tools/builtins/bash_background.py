@@ -3,9 +3,8 @@
 import asyncio
 import os
 import time
+from dataclasses import dataclass, field
 from typing import ClassVar
-
-from pydantic import BaseModel, ConfigDict
 
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
@@ -42,16 +41,15 @@ _TOOL_DESCRIPTION = """\
 - action="list"：列出所有后台任务"""
 
 
-class _BackgroundJob(BaseModel):
+@dataclass
+class _BackgroundJob:
     """后台任务状态"""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     job_id: str
     command: str
     process: asyncio.subprocess.Process
-    output_buffer: list[str] = []
     started_at: float
+    output_buffer: list[str] = field(default_factory=list)
     is_alive: bool = True
 
 

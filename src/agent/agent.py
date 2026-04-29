@@ -1,15 +1,17 @@
 """Agent Loop — 事件驱动的 ReAct 循环"""
 
+import asyncio
 import json
 from typing import AsyncGenerator
 
 from src.client import OpenAIClient
 from src.client.models import Message
 from src.tools import ToolRegistry
+from src.tools.base import ToolResult
 from src.memory.session import SessionManager
-from src.memory.compactor import micro_compact, check_compact, do_compact
+from src.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, _calc_total_tokens
 from src.agent.events import (
-    AgentEvent, TextDelta, ToolCallStart, ToolCallArgumentsDelta,
+    AgentEvent, TextDelta, ToolCallStart, ToolArgsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
     CompactStart, CompactComplete,
 )
@@ -61,9 +63,8 @@ class Agent:
                 if usage and "prompt_tokens" in usage:
                     self._last_prompt_tokens = usage["prompt_tokens"]
                     break
-            messages = [{k: v for k, v in m.items() if k != "usage"} for m in raw]
-            repaired = self._repair_messages(messages)
-            if len(repaired) != len(messages):
+            repaired = self._repair_messages(raw)
+            if len(repaired) != len(raw):
                 self._session.overwrite_messages(repaired)
             self._messages = repaired
 
@@ -157,42 +158,75 @@ class Agent:
                     tool_name, parser = parsers[idx]
                     extracted = parser.feed(delta.tool_call_arguments)
                     if extracted:
-                        yield ToolCallArgumentsDelta(
+                        yield ToolArgsDelta(
                             tool_name=tool_name,
                             field_name=STREAM_FIELDS[tool_name],
-                            delta=extracted,
+                            content=extracted,
                         )
 
         yield stream.message
 
     async def _execute_tools(self, msg: Message) -> AsyncGenerator[AgentEvent, None]:
+        """执行工具调用。普通工具并行发起，流式工具串行；UI 事件按原始顺序 yield。"""
+        # 预解析参数，判断每个工具是否走流式
+        parsed: list[tuple] = []  # (tc, args, is_streaming)
         for tc in msg.tool_calls:
+            args = json.loads(tc.arguments)
+            tool = self._registry.get(tc.name)
+            is_streaming = tool is not None and tool.run_streaming(**args) is not None
+            parsed.append((tc, args, is_streaming))
+
+        # 并行发起所有普通工具
+        pending_tasks: dict[str, asyncio.Task] = {}
+        for tc, args, is_streaming in parsed:
+            if not is_streaming:
+                pending_tasks[tc.id] = asyncio.create_task(
+                    self._registry.execute(tc.name, args)
+                )
+
+        # 图片 user message 必须延后写入：OpenAI 要求 assistant(tool_calls=[A,B]) 之后
+        # 必须先连续出现所有 tool messages，之间不能插入其他 role。
+        deferred_image_msgs: list[dict] = []
+
+        # 按原始顺序逐个 yield 事件
+        for tc, args, is_streaming in parsed:
             if self._cancelled:
+                # 取消尚未完成的任务
+                for task in pending_tasks.values():
+                    task.cancel()
                 break
 
-            args = json.loads(tc.arguments)
             yield ToolCallStart(tool_name=tc.name, arguments=args)
 
-            tool = self._registry.get(tc.name)
-            stream = tool.run_streaming(**args) if tool else None
-
-            if stream is not None:
-                # 流式工具：转发事件流，最后一个 ToolCallResult 用于持久化
+            if is_streaming:
+                # 流式工具：串行转发事件流
+                tool = self._registry.get(tc.name)
+                assert tool is not None
+                stream = tool.run_streaming(**args)
+                assert stream is not None
                 result_event: ToolCallResult | None = None
                 async for event in stream:
                     if isinstance(event, ToolCallResult):
                         result_event = event
                     else:
                         yield event
-                # 持久化结果
                 content = result_event.result if result_event else "[流式工具无输出]"
-                self._persist({"role": "tool", "tool_call_id": tc.id, "content": content})
+                is_error = result_event.is_error if result_event else False
+                result = ToolResult(content=content, is_error=is_error)
                 yield result_event or ToolCallResult(tool_name=tc.name, result=content)
             else:
-                # 普通工具：execute + 持久化
-                result = await self._registry.execute(tc.name, args)
-                self._persist(result.to_message_dict(tc.id))
+                # 普通工具：await 已并行发起的 task（若已完成则立即返回）
+                result = await pending_tasks[tc.id]
                 yield ToolCallResult(tool_name=tc.name, result=result.content)
+
+            # 统一处理：tool message 立即落库，图片 user message 暂存到循环末尾写
+            msgs = result.to_messages(tc.id)
+            self._persist(msgs[0])
+            deferred_image_msgs.extend(msgs[1:])
+
+        # 所有 tool messages 写完后，再追加图片 user messages
+        for image_msg in deferred_image_msgs:
+            self._persist(image_msg)
 
     async def _try_compact(self) -> AsyncGenerator[AgentEvent, None]:
         for _ in range(3):
@@ -216,6 +250,22 @@ class Agent:
                 after_tokens=result.after_tokens,
             )
 
+    async def force_compact(self) -> AsyncGenerator[AgentEvent, None]:
+        """用户手动触发上下文压缩。"""
+        if not self._messages:
+            return
+        total = _calc_total_tokens(self._messages, self._system_prompt)
+        check = CompactCheck(current_tokens=total, threshold_tokens=total)
+        yield CompactStart(current_tokens=total, threshold_tokens=total, manual=True)
+        result = await do_compact(
+            messages=self._messages,
+            system_prompt=self._system_prompt,
+            client=self._client,
+            session_manager=self._session,
+            check=check,
+        )
+        yield CompactComplete(before_tokens=result.before_tokens, after_tokens=result.after_tokens)
+
     # ── 辅助方法 ──────────────────────────────────────────
 
     def _build_messages(self) -> list[dict]:
@@ -225,7 +275,7 @@ class Agent:
             prompt += "\n\n" + tool_context
         cleaned = []
         for m in self._messages:
-            d = {k: v for k, v in m.items() if not k.startswith("_")}
+            d = {k: v for k, v in m.items() if not k.startswith("_") and k != "usage"}
             if d.get("role") == "assistant" and "content" not in d:
                 d["content"] = ""
             cleaned.append(d)

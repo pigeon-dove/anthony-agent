@@ -11,10 +11,12 @@ from src.tools.builtins.think import ThinkTool
 from src.tools.builtins.web_search import WebSearchTool
 from src.tools.builtins.web_fetch import WebFetchTool
 from src.tools.builtins.task import TaskTool
+from src.tools.builtins.skill import SkillTool
 
 # 无参构造的内置工具类（不含 TaskTool，它需要额外依赖注入）
 BUILTIN_TOOLS = [
     ReadFileTool, WriteFileTool, EditFileTool, MultiEditTool,
     BashTool, BackgroundBashTool, LsTool, GlobTool, GrepTool,
     ThinkTool, WebSearchTool, WebFetchTool,
+    SkillTool,
 ]

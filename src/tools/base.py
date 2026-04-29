@@ -15,9 +15,39 @@ class ToolDefinition(BaseModel):
 class ToolResult(BaseModel):
     content: str
     is_error: bool = False
+    images: list[str] = []  # 工具读取到的图片绝对路径列表；会作为附加 user message 注入对话
 
-    def to_message_dict(self, tool_call_id: str) -> dict:
-        return {"role": "tool", "tool_call_id": tool_call_id, "content": self.content}
+    def to_messages(self, tool_call_id: str) -> list[dict]:
+        """转成要追加到对话的消息序列：必然包含 1 条 tool message，
+        若有图片则额外追加 1 条带 _tool_call_id 标记的 user message。
+        """
+        from src.utils.image import image_to_data_url
+        from config import app_config
+
+        msgs: list[dict] = [
+            {"role": "tool", "tool_call_id": tool_call_id, "content": self.content}
+        ]
+        if not self.images:
+            return msgs
+
+        supports_vision = app_config.llm.supports_vision
+        parts: list[dict] = [{"type": "text", "text": "[工具读取的图片]"}]
+        for path in self.images:
+            if not supports_vision:
+                parts.append({"type": "text", "text": f"[图片: {path}（当前模型不支持视觉输入，已跳过）]"})
+                continue
+            try:
+                data_url = image_to_data_url(path)
+                parts.append({"type": "image_url", "image_url": {"url": data_url}})
+            except Exception as e:
+                parts.append({"type": "text", "text": f"[图片加载失败 {path}: {e}]"})
+
+        msgs.append({
+            "role": "user",
+            "content": parts,
+            "_tool_call_id": tool_call_id,  # 标记：这条 user 属于哪个 tool_call
+        })
+        return msgs
 
 
 class BaseTool(ABC):

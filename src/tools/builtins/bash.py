@@ -2,12 +2,15 @@
 
 import asyncio
 import os
+from typing import AsyncGenerator
 
+from src.agent.events import AgentEvent, ToolCallResult, ToolResultDelta
 from src.tools.base import BaseTool, ToolDefinition, ToolResult
 
 _TIMEOUT = 30
 _MAX_TIMEOUT = 600
 _MAX_OUTPUT = 30_000
+_POLL_INTERVAL = 0.1  # 轮询 stdout 的间隔（秒）
 
 _TOOL_DESCRIPTION = """\
 在独立的 bash 子进程中执行命令，**每次调用都是全新的 shell 环境**，命令完成后进程立即销毁。
@@ -18,6 +21,7 @@ _TOOL_DESCRIPTION = """\
 - 如需在特定目录执行，请在命令中使用 `cd /path && ...`
 - 超时默认 30 秒，最大 600 秒；超时后进程会被强制终止
 - 输出超过 30000 字符会被截断（保留首尾各半）
+- 输出流式显示：命令执行过程中的 stdout/stderr 会实时展示给用户
 
 适用场景：
 - 快速命令：文件操作、git 操作、包管理、编译构建等
@@ -34,7 +38,6 @@ _TOOL_DESCRIPTION = """\
 - 多条命令用 `;` 或 `&&` 连接，不要用换行符
 - 需要保留环境变量时，在同一次调用中完成所有依赖该变量的操作
 - 不要执行需要交互式输入的命令"""
-
 
 class BashTool(BaseTool):
     """无状态 shell：每次调用创建独立子进程，执行完即销毁"""
@@ -54,6 +57,19 @@ class BashTool(BaseTool):
         )
 
     async def execute(self, command: str, timeout: int = _TIMEOUT) -> ToolResult:
+        """兜底路径：聚合 run_streaming 的最终结果。"""
+        final: ToolCallResult | None = None
+        async for event in self.run_streaming(command=command, timeout=timeout):
+            if isinstance(event, ToolCallResult):
+                final = event
+        if final is None:
+            return ToolResult(content="（无输出）")
+        return ToolResult(content=final.result, is_error=final.is_error)
+
+    async def run_streaming(
+        self, command: str, timeout: int = _TIMEOUT
+    ) -> AsyncGenerator[AgentEvent, None]:
+        """按行流式输出 stdout/stderr，最后产出完整结果。"""
         timeout = min(timeout, _MAX_TIMEOUT)
 
         proc = await asyncio.create_subprocess_shell(
@@ -63,25 +79,80 @@ class BashTool(BaseTool):
             cwd=os.getcwd(),
         )
 
+        collected: list[str] = []
+        assert proc.stdout is not None
+        stdout = proc.stdout
+
+        async def read_lines() -> None:
+            while True:
+                raw = await stdout.readline()
+                if not raw:
+                    break
+                collected.append(raw.decode(errors="replace").rstrip("\n"))
+
+        reader = asyncio.create_task(read_lines())
+        loop = asyncio.get_event_loop()
+        deadline = loop.time() + timeout
+        emitted = 0
+        timed_out = False
+
         try:
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-        except asyncio.TimeoutError:
+            while True:
+                remaining = deadline - loop.time()
+                if remaining <= 0:
+                    timed_out = True
+                    break
+
+                try:
+                    await asyncio.wait_for(
+                        asyncio.shield(reader),
+                        timeout=min(_POLL_INTERVAL, remaining),
+                    )
+                    # reader 完成：flush 剩余行后退出
+                    for line in collected[emitted:]:
+                        yield ToolResultDelta(tool_name="bash", content=line)
+                    emitted = len(collected)
+                    break
+                except asyncio.TimeoutError:
+                    # 本轮轮询超时，flush 已累积的新行后继续下一轮
+                    for line in collected[emitted:]:
+                        yield ToolResultDelta(tool_name="bash", content=line)
+                    emitted = len(collected)
+        except asyncio.CancelledError:
+            reader.cancel()
             proc.kill()
             await proc.wait()
-            return ToolResult(
-                content=(
+            raise
+
+        if timed_out:
+            reader.cancel()
+            proc.kill()
+            await proc.wait()
+            yield ToolCallResult(
+                tool_name="bash",
+                result=(
                     f"命令超时（{timeout}s），已强制终止。"
                     f"该命令可能是长时间运行的进程，请改用 background_bash 工具重新执行。"
                 ),
                 is_error=True,
             )
+            return
 
-        output = self._truncate(stdout.decode(errors="replace").rstrip())
+        await proc.wait()
         exit_code = proc.returncode or 0
+        full_output = self._truncate("\n".join(collected).rstrip())
 
         if exit_code != 0:
-            return ToolResult(content=output or f"退出码 {exit_code}", is_error=True)
-        return ToolResult(content=output or "（无输出）")
+            yield ToolCallResult(
+                tool_name="bash",
+                result=full_output or f"退出码 {exit_code}",
+                is_error=True,
+            )
+        else:
+            yield ToolCallResult(
+                tool_name="bash",
+                result=full_output or "（无输出）",
+            )
 
     @staticmethod
     def _truncate(output: str) -> str:
