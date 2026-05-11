@@ -7,6 +7,10 @@ class AgentEvent(BaseModel):
     pass
 
 
+class ReasoningDelta(AgentEvent):
+    content: str
+
+
 class TextDelta(AgentEvent):
     content: str
 
@@ -53,3 +57,8 @@ class ToolResultDelta(AgentEvent):
     """流式工具的结果增量（如 task 工具的子 Agent 进度）"""
     tool_name: str
     content: str
+
+
+class BashBackgroundable(AgentEvent):
+    """bash 正在执行中，可被用户转入后台"""
+    pass

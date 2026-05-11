@@ -27,17 +27,78 @@ class SkillInfo:
 
 
 def _parse_frontmatter(text: str) -> dict[str, str]:
-    """解析 SKILL.md 开头的 YAML frontmatter（简易实现，只取 key: value）。"""
+    """解析 SKILL.md 开头的 YAML frontmatter。
+
+    支持简单的 `key: value`，以及 YAML 多行字符串块标量 `>`, `>-`, `|`, `|-`
+    （通过缩进续行，`>` 折叠换行为空格，`|` 保留换行）。
+    """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return {}
-    meta = {}
-    for line in lines[1:]:
+
+    meta: dict[str, str] = {}
+    i = 1
+    n = len(lines)
+    while i < n:
+        line = lines[i]
         if line.strip() == "---":
             break
-        if ":" in line:
-            key, _, value = line.partition(":")
-            meta[key.strip()] = value.strip()
+        if ":" not in line:
+            i += 1
+            continue
+
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+
+        # 多行块标量：> 折叠、| 保留；尾部 - 表示 strip 末尾换行（对我们无影响）
+        if value in (">", ">-", "|", "|-"):
+            fold = value.startswith(">")
+            i += 1
+            block_lines: list[str] = []
+            base_indent: int | None = None
+            while i < n:
+                cur = lines[i]
+                if cur.strip() == "---":
+                    break
+                # 空行视为续行
+                if cur.strip() == "":
+                    block_lines.append("")
+                    i += 1
+                    continue
+                indent = len(cur) - len(cur.lstrip(" "))
+                if base_indent is None:
+                    if indent == 0:
+                        # 没有缩进，说明块结束
+                        break
+                    base_indent = indent
+                elif indent < base_indent:
+                    break
+                block_lines.append(cur[base_indent:])
+                i += 1
+
+            if fold:
+                # 折叠：连续非空行用空格连起来，空行保留为换行
+                parts: list[str] = []
+                buf: list[str] = []
+                for bl in block_lines:
+                    if bl == "":
+                        if buf:
+                            parts.append(" ".join(buf))
+                            buf = []
+                        parts.append("")
+                    else:
+                        buf.append(bl.strip())
+                if buf:
+                    parts.append(" ".join(buf))
+                folded = "\n".join(parts).strip("\n")
+                meta[key] = folded
+            else:
+                meta[key] = "\n".join(block_lines).rstrip("\n")
+            continue
+
+        meta[key] = value
+        i += 1
     return meta
 
 

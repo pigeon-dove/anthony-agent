@@ -46,6 +46,7 @@ class AgentApp(App):
         Binding("ctrl+y", "copy_last_reply", "复制回复", priority=True),
         Binding("ctrl+s", "toggle_mouse", "选择模式", priority=True),
         Binding("ctrl+k", "compact", "压缩上下文", priority=True),
+        Binding("ctrl+b", "bash_to_background", "转入后台", priority=True),
         Binding("ctrl+q", "noop", show=False),
     ]
 
@@ -218,6 +219,13 @@ class AgentApp(App):
     def action_cancel(self) -> None:
         if self.query_one("#input-box", ChatInput).disabled:
             self._agent.cancel()
+
+    def action_bash_to_background(self) -> None:
+        """将正在执行的 bash 命令转入后台。"""
+        from anthony_agent.tools.builtins.bash import BashTool
+        bash_tool = self._tool_registry.get("bash")
+        if isinstance(bash_tool, BashTool):
+            bash_tool.request_background()
 
     def action_noop(self) -> None:
         pass

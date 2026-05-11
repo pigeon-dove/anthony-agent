@@ -10,9 +10,9 @@ from textual.widgets import Static, Markdown, Collapsible
 from textual.widgets._markdown import MarkdownStream
 
 from anthony_agent.agent.events import (
-    AgentEvent, TextDelta, ToolCallStart, ToolArgsDelta,
+    AgentEvent, ReasoningDelta, TextDelta, ToolCallStart, ToolArgsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
-    CompactStart, CompactComplete, ToolResultDelta,
+    CompactStart, CompactComplete, ToolResultDelta, BashBackgroundable,
 )
 
 from typing import TYPE_CHECKING
@@ -29,6 +29,7 @@ class EventRenderer:
     _TASK_WINDOW_LINES = 10  # task 工具进度窗口显示的行数
 
     _HANDLERS: dict[type, str] = {
+        ReasoningDelta: "_on_reasoning_delta",
         TextDelta: "_on_text_delta",
         ToolArgsDelta: "_on_tool_args_delta",
         ToolCallStart: "_on_tool_call_start",
@@ -38,6 +39,7 @@ class EventRenderer:
         UsageReport: "_on_usage_report",
         CompactStart: "_on_compact_start",
         CompactComplete: "_on_compact_complete",
+        BashBackgroundable: "_on_bash_backgroundable",
     }
 
     def __init__(self, area: VerticalScroll, context_bar: "ContextBar | None" = None):
@@ -51,6 +53,9 @@ class EventRenderer:
         self._md_stream: MarkdownStream | None = None
         self._streaming_text = False
         self._last_reply_text = ""
+        # reasoning 流式状态
+        self._reasoning_widget: Static | None = None
+        self._reasoning_text = ""
         # 工具卡片状态
         self._tool_card: Collapsible | None = None
         self._tool_card_result: Static | None = None
@@ -66,6 +71,8 @@ class EventRenderer:
         self._needs_anchor = False
         # 用户主动向上滚动标志：为 True 时暂停自动滚动
         self._user_scrolled_away = False
+        # bash 转后台提示 widget
+        self._bash_bg_hint: Static | None = None
 
     # ── 公开接口 ──────────────────────────────────────────
 
@@ -207,7 +214,25 @@ class EventRenderer:
 
     # ── 事件处理 ──────────────────────────────────────────
 
+    async def _on_reasoning_delta(self, event: ReasoningDelta) -> None:
+        if self._reasoning_widget is None:
+            self._reasoning_widget = Static(
+                "[dim italic]💭 Thinking...[/]", classes="reasoning-block"
+            )
+            await self._area.mount(self._reasoning_widget)
+        self._reasoning_text += event.content
+        # 只显示最后 20 行，避免占据过多空间
+        lines = self._reasoning_text.splitlines()
+        display = "\n".join(lines[-20:]) if len(lines) > 20 else self._reasoning_text
+        self._reasoning_widget.update(
+            f"[dim italic]💭 {rich_escape(display)}[/]"
+        )
+        self._auto_scroll()
+
     async def _on_text_delta(self, event: TextDelta) -> None:
+        # reasoning 结束，正式内容开始
+        self._clear_reasoning()
+
         if not self._streaming_text:
             self._md_widget = Markdown("", classes="llm-markdown")
             await self._area.mount(self._md_widget)
@@ -250,6 +275,7 @@ class EventRenderer:
 
     async def _on_tool_call_start(self, event: ToolCallStart) -> None:
         self._end_text_stream()
+        self._clear_reasoning()
 
         if self._tool_card is not None:
             # 卡片已由流式参数创建，更新执行状态
@@ -299,6 +325,10 @@ class EventRenderer:
         # 清理 task 进度窗口状态
         self._task_progress_widget = None
         self._task_progress_lines = []
+        # 清理 bash 转后台提示
+        if self._bash_bg_hint is not None:
+            await self._bash_bg_hint.remove()
+            self._bash_bg_hint = None
 
         label = RichText("✔ 结果:\n", style="green")
         body = RichText(str(event.result))
@@ -358,6 +388,15 @@ class EventRenderer:
             self._context_bar.update_usage(event.after_tokens)
         self._auto_scroll()
 
+    async def _on_bash_backgroundable(self, _event: BashBackgroundable) -> None:
+        """bash 正在执行，显示转后台提示。"""
+        self._bash_bg_hint = Static(
+            "[dim]按 [bold]Ctrl+B[/bold] 可将此命令转入后台执行[/]",
+            classes="status-info",
+        )
+        await self._area.mount(self._bash_bg_hint)
+        self._auto_scroll()
+
     # ── 内部辅助 ──────────────────────────────────────────
 
     def _auto_scroll(self) -> None:
@@ -372,6 +411,15 @@ class EventRenderer:
     def _end_text_stream(self) -> None:
         self._streaming_text = False
         self._md_widget = None
+
+    def _clear_reasoning(self) -> None:
+        """结束当前 reasoning 区域，使下一轮 LLM 创建新 widget。"""
+        if self._reasoning_widget is not None:
+            self._reasoning_widget.update(
+                f"[dim italic]💭 Thought for {len(self._reasoning_text)} chars[/]"
+            )
+            self._reasoning_widget = None
+            self._reasoning_text = ""
 
     async def _stop_md_stream(self) -> None:
         if self._md_stream is not None:

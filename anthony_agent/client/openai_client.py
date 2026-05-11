@@ -37,6 +37,8 @@ class StreamResponse:
                 continue
 
             delta = choice.delta
+            if delta is None:
+                continue
             reasoning = getattr(delta, "reasoning_content", None)
             if reasoning:
                 self._reasoning_parts.append(reasoning)

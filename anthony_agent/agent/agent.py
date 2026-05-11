@@ -11,7 +11,7 @@ from anthony_agent.tools.base import ToolResult
 from anthony_agent.memory.session import SessionManager
 from anthony_agent.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, _calc_total_tokens
 from anthony_agent.agent.events import (
-    AgentEvent, TextDelta, ToolCallStart, ToolArgsDelta,
+    AgentEvent, ReasoningDelta, TextDelta, ToolCallStart, ToolArgsDelta,
     ToolCallResult, ResponseComplete, UsageReport,
     CompactStart, CompactComplete,
 )
@@ -143,6 +143,9 @@ class Agent:
         async for delta in stream:
             if self._cancelled:
                 break
+
+            if delta.reasoning_content:
+                yield ReasoningDelta(content=delta.reasoning_content)
 
             if delta.content:
                 yield TextDelta(content=delta.content)

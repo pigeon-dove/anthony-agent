@@ -72,6 +72,15 @@ APP_CSS = """\
     border: round $primary-darken-2;
 }
 
+/* Reasoning 思考过程 */
+.reasoning-block {
+    color: $text-muted;
+    margin: 1 0 0 0;
+    padding: 0 1;
+    max-height: 8;
+    text-style: italic;
+}
+
 /* 状态信息（usage / compact） */
 .status-info {
     color: $text-muted;

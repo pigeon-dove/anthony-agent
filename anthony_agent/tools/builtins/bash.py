@@ -1,10 +1,10 @@
-"""BashTool — 无状态 shell，每次调用独立执行"""
+"""BashTool — 无状态 shell，每次调用独立执行，支持运行中转入后台"""
 
 import asyncio
 import os
 from typing import AsyncGenerator
 
-from anthony_agent.agent.events import AgentEvent, ToolCallResult, ToolResultDelta
+from anthony_agent.agent.events import AgentEvent, ToolCallResult, ToolResultDelta, BashBackgroundable
 from anthony_agent.tools.base import BaseTool, ToolDefinition, ToolResult
 
 _TIMEOUT = 30
@@ -22,6 +22,7 @@ _TOOL_DESCRIPTION = """\
 - 超时默认 30 秒，最大 600 秒；超时后进程会被强制终止
 - 输出超过 30000 字符会被截断（保留首尾各半）
 - 输出流式显示：命令执行过程中的 stdout/stderr 会实时展示给用户
+- 执行期间用户可按 Ctrl+B 将命令转入后台，转为 background_bash 管理
 
 适用场景：
 - 快速命令：文件操作、git 操作、包管理、编译构建等
@@ -39,8 +40,17 @@ _TOOL_DESCRIPTION = """\
 - 需要保留环境变量时，在同一次调用中完成所有依赖该变量的操作
 - 不要执行需要交互式输入的命令"""
 
+
 class BashTool(BaseTool):
-    """无状态 shell：每次调用创建独立子进程，执行完即销毁"""
+    """无状态 shell：每次调用创建独立子进程，执行完即销毁，支持转入后台"""
+
+    def __init__(self):
+        self._background_requested = False
+        self._bg_tool = None  # 延迟绑定 BackgroundBashTool 实例
+
+    def request_background(self) -> None:
+        """由 UI 层调用，请求将当前 bash 转入后台。"""
+        self._background_requested = True
 
     def definition(self) -> ToolDefinition:
         return ToolDefinition(
@@ -71,6 +81,7 @@ class BashTool(BaseTool):
     ) -> AsyncGenerator[AgentEvent, None]:
         """按行流式输出 stdout/stderr，最后产出完整结果。"""
         timeout = min(timeout, _MAX_TIMEOUT)
+        self._background_requested = False
 
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -96,8 +107,28 @@ class BashTool(BaseTool):
         emitted = 0
         timed_out = False
 
+        # 通知 UI：此 bash 可被转入后台
+        yield BashBackgroundable()
+
         try:
             while True:
+                # 检查用户是否请求转入后台
+                if self._background_requested:
+                    self._background_requested = False
+                    job_id = self._transfer_to_background(proc, command, collected, reader)
+                    for line in collected[emitted:]:
+                        yield ToolResultDelta(tool_name="bash", content=line)
+                    yield ToolCallResult(
+                        tool_name="bash",
+                        result=(
+                            f"用户已将命令转入后台执行。\n"
+                            f"job_id: {job_id}\n"
+                            f"使用 background_bash(action='status', job_id='{job_id}') 查看输出，"
+                            f"background_bash(action='stop', job_id='{job_id}') 终止任务。"
+                        ),
+                    )
+                    return
+
                 remaining = deadline - loop.time()
                 if remaining <= 0:
                     timed_out = True
@@ -108,13 +139,11 @@ class BashTool(BaseTool):
                         asyncio.shield(reader),
                         timeout=min(_POLL_INTERVAL, remaining),
                     )
-                    # reader 完成：flush 剩余行后退出
                     for line in collected[emitted:]:
                         yield ToolResultDelta(tool_name="bash", content=line)
                     emitted = len(collected)
                     break
                 except asyncio.TimeoutError:
-                    # 本轮轮询超时，flush 已累积的新行后继续下一轮
                     for line in collected[emitted:]:
                         yield ToolResultDelta(tool_name="bash", content=line)
                     emitted = len(collected)
@@ -153,6 +182,17 @@ class BashTool(BaseTool):
                 tool_name="bash",
                 result=full_output or "（无输出）",
             )
+
+    def _transfer_to_background(
+        self,
+        proc: asyncio.subprocess.Process,
+        command: str,
+        collected: list[str],
+        reader: asyncio.Task,
+    ) -> str:
+        """将进程移交给 BackgroundBashTool，返回 job_id。"""
+        from anthony_agent.tools.builtins.bash_background import BackgroundBashTool
+        return BackgroundBashTool.adopt(proc, command, collected, reader)
 
     @staticmethod
     def _truncate(output: str) -> str:

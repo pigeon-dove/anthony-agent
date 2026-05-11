@@ -121,6 +121,46 @@ class BackgroundBashTool(BaseTool):
         elapsed = self._fmt_duration(job.started_at)
         return f"[{status} | {elapsed}] {job.job_id}"
 
+    # ── 接管来自 bash 的进程 ──
+
+    @classmethod
+    def adopt(
+        cls,
+        proc: asyncio.subprocess.Process,
+        command: str,
+        collected: list[str],
+        reader: asyncio.Task,
+    ) -> str:
+        """接管 bash 移交的进程，返回 job_id。
+
+        直接复用 bash 的 reader task 和 collected 列表（共享引用），
+        不取消 reader，避免破坏 stdout StreamReader 的内部状态。
+        """
+        job_id = f"bg_{os.urandom(4).hex()}"
+        job = _BackgroundJob(
+            job_id=job_id,
+            command=command,
+            process=proc,
+            started_at=time.monotonic(),
+            output_buffer=collected,  # 共享引用，reader 继续往里写
+        )
+        cls._jobs[job_id] = job
+
+        # 包装原 reader：完成后标记 job 结束 + 裁剪缓冲区
+        async def watch_reader() -> None:
+            try:
+                await reader
+            except asyncio.CancelledError:
+                pass
+            finally:
+                # 裁剪可能过长的缓冲区
+                if len(job.output_buffer) > _MAX_BUFFER:
+                    job.output_buffer[:] = job.output_buffer[-_MAX_BUFFER:]
+                job.is_alive = False
+
+        cls._tasks[job_id] = asyncio.create_task(watch_reader())
+        return job_id
+
     # ── start ──
 
     async def _start(self, command: str) -> ToolResult:
@@ -202,7 +242,8 @@ class BackgroundBashTool(BaseTool):
 
     # ── 后台读取协程 ──
 
-    async def _reader_loop(self, job: _BackgroundJob) -> None:
+    @staticmethod
+    async def _reader_loop(job: _BackgroundJob) -> None:
         """持续读取进程输出到缓冲区"""
         assert job.process.stdout
         try:
