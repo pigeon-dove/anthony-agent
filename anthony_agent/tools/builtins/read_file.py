@@ -19,14 +19,10 @@ _TOOL_DESCRIPTION = """\
 - 可同时发起多个读取调用以提高效率
 - 读取图片文件（png/jpg/jpeg/gif/webp）时，图片会自动注入到下一条消息，你可直接看到图片内容
 
-输出限制：
-- 默认最多 2000 行，单行超过 2000 字符会截断
-- 总输出不超过 60000 字符，超大文件会提前截断
-- 长文件可通过 offset（起始行号）和 limit（行数）参数指定读取范围
-
 使用指南：
 - 使用绝对路径指定文件
-- 小文件建议一次性读取全部内容，不必指定 offset/limit"""
+- 小文件建议一次性读取全部内容，不必指定 offset/limit
+- 长文件可通过 offset（起始行号）和 limit（行数）参数指定读取范围"""
 
 
 def _read_lines(p: Path, start: int, count: int) -> tuple[list[str], int]:

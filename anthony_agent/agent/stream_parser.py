@@ -17,8 +17,6 @@ class ArgumentsStreamParser:
     """
 
     def __init__(self, field_name: str):
-        self._triggers = [f'"{field_name}":"{s}' for s in ("", " ", "  ")]
-        # 修正：triggers 应该是 key: value 的前缀模式
         self._triggers = [
             f'"{field_name}":"',
             f'"{field_name}": "',

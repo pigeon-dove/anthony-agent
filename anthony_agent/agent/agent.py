@@ -12,7 +12,7 @@ from anthony_agent.memory.session import SessionManager
 from anthony_agent.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, _calc_total_tokens
 from anthony_agent.agent.events import (
     AgentEvent, ReasoningDelta, TextDelta, ToolCallStart, ToolArgsDelta,
-    ToolCallResult, ResponseComplete, UsageReport,
+    ToolCallResult, ToolResultDelta, ResponseComplete, UsageReport,
     CompactStart, CompactComplete,
 )
 from anthony_agent.agent.stream_parser import STREAM_FIELDS, ArgumentsStreamParser
@@ -194,35 +194,49 @@ class Agent:
         # 按原始顺序逐个 yield 事件
         for tc, args, is_streaming in parsed:
             if self._cancelled:
-                # 取消尚未完成的任务
-                for task in pending_tasks.values():
-                    task.cancel()
-                break
+                self._persist({"role": "tool", "tool_call_id": tc.id,
+                               "content": "[用户中断，此工具未执行]"})
+                continue
 
             yield ToolCallStart(tool_name=tc.name, arguments=args)
 
             if is_streaming:
-                # 流式工具：串行转发事件流
                 tool = self._registry.get(tc.name)
                 assert tool is not None
                 stream = tool.run_streaming(**args)
                 assert stream is not None
                 result_event: ToolCallResult | None = None
+                partial_lines: list[str] = []
                 async for event in stream:
                     if isinstance(event, ToolCallResult):
                         result_event = event
                     else:
+                        if isinstance(event, ToolResultDelta):
+                            partial_lines.append(event.content)
                         yield event
-                content = result_event.result if result_event else "[流式工具无输出]"
-                is_error = result_event.is_error if result_event else False
-                result = ToolResult(content=content, is_error=is_error)
-                yield result_event or ToolCallResult(tool_name=tc.name, result=content)
+                    if self._cancelled and result_event is None:
+                        break
+                if self._cancelled and result_event is None:
+                    partial = "\n".join(partial_lines)
+                    if len(partial) > 30_000:
+                        half = 15_000
+                        partial = f"{partial[:half]}\n\n... [截断 {len(partial) - 30_000} 字符] ...\n\n{partial[-half:]}"
+                    content = f"{partial}\n[用户中断，以上是中断前的部分输出]" if partial else "[用户中断，无输出]"
+                    result = ToolResult(content=content)
+                    # 先 persist 再 yield：yield 后 generator 可能被 close
+                    self._persist({"role": "tool", "tool_call_id": tc.id, "content": content})
+                    yield ToolCallResult(tool_name=tc.name, result=content)
+                    continue
+                else:
+                    content = result_event.result if result_event else "[流式工具无输出]"
+                    is_error = result_event.is_error if result_event else False
+                    result = ToolResult(content=content, is_error=is_error)
+                    yield result_event or ToolCallResult(tool_name=tc.name, result=content)
             else:
-                # 普通工具：await 已并行发起的 task（若已完成则立即返回）
                 result = await pending_tasks[tc.id]
                 yield ToolCallResult(tool_name=tc.name, result=result.content)
 
-            # 统一处理：tool message 立即落库，图片 user message 暂存到循环末尾写
+            # 正常完成：tool message 落库
             msgs = result.to_messages(tc.id)
             self._persist(msgs[0])
             deferred_image_msgs.extend(msgs[1:])

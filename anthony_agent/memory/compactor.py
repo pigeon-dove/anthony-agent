@@ -345,7 +345,6 @@ def _ensure_assistant_content(messages: list[dict]) -> None:
 
 
 def _build_tc_map(messages: list[dict]) -> dict[str, str]:
-    """tool_call_id → tool_name 映射。"""
     m: dict[str, str] = {}
     for msg in messages:
         if msg.get("role") != "assistant":

@@ -38,7 +38,9 @@ _TOOL_DESCRIPTION = """\
 - action="start", command="..."：启动后台命令，返回 job_id
 - action="status", job_id="..."：查看最近输出（默认 50 行，可通过 tail 调整，最大 1000）
 - action="stop", job_id="..."：终止后台任务
-- action="list"：列出所有后台任务"""
+- action="list"：列出所有后台任务
+
+💡 如果需要查看完整输出日志，建议启动命令时将输出重定向到文件（如 `command 2>&1 | tee /tmp/output.log`），之后用 read_file 查看。"""
 
 
 @dataclass
@@ -104,11 +106,9 @@ class BackgroundBashTool(BaseTool):
     # ── 内部工具方法 ──
 
     def _get_job(self, job_id: str) -> _BackgroundJob | None:
-        """查找任务，不存在返回 None"""
         return self._jobs.get(job_id)
 
     def _tail_output(self, job: _BackgroundJob, n: int = _DEFAULT_TAIL) -> str:
-        """返回缓冲区最近 n 行，附带截断提示"""
         total = len(job.output_buffer)
         lines = job.output_buffer[-n:]
         output = "\n".join(lines) or "(暂无输出)"
@@ -244,7 +244,6 @@ class BackgroundBashTool(BaseTool):
 
     @staticmethod
     async def _reader_loop(job: _BackgroundJob) -> None:
-        """持续读取进程输出到缓冲区"""
         assert job.process.stdout
         try:
             while True:
@@ -262,7 +261,6 @@ class BackgroundBashTool(BaseTool):
     # ── 生命周期 ──
 
     async def cleanup(self) -> None:
-        """终止所有后台任务并清理资源"""
         for job in self._jobs.values():
             if job.is_alive:
                 job.process.kill()
@@ -282,7 +280,6 @@ class BackgroundBashTool(BaseTool):
 
     @staticmethod
     def _fmt_duration(started_at: float) -> str:
-        """格式化运行时长"""
         secs = int(time.monotonic() - started_at)
         if secs < 60:
             return f"{secs}s"

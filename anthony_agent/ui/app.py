@@ -47,7 +47,7 @@ class AgentApp(App):
         Binding("ctrl+s", "toggle_mouse", "选择模式", priority=True),
         Binding("ctrl+k", "compact", "压缩上下文", priority=True),
         Binding("ctrl+b", "bash_to_background", "转入后台", priority=True),
-        Binding("ctrl+q", "noop", show=False),
+        Binding("ctrl+q", "noop", show=False),  # 屏蔽终端默认 quit
     ]
 
     def __init__(self, agent: Agent, session_id: str, tool_registry: ToolRegistry):

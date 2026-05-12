@@ -20,9 +20,6 @@ _TOOL_DESCRIPTION = """\
 - 不保留跨调用状态：环境变量、工作目录、shell 变量等不会在调用间传递
 - 如需在特定目录执行，请在命令中使用 `cd /path && ...`
 - 超时默认 30 秒，最大 600 秒；超时后进程会被强制终止
-- 输出超过 30000 字符会被截断（保留首尾各半）
-- 输出流式显示：命令执行过程中的 stdout/stderr 会实时展示给用户
-- 执行期间用户可按 Ctrl+B 将命令转入后台，转为 background_bash 管理
 
 适用场景：
 - 快速命令：文件操作、git 操作、包管理、编译构建等
@@ -46,7 +43,6 @@ class BashTool(BaseTool):
 
     def __init__(self):
         self._background_requested = False
-        self._bg_tool = None  # 延迟绑定 BackgroundBashTool 实例
 
     def request_background(self) -> None:
         """由 UI 层调用，请求将当前 bash 转入后台。"""
@@ -118,12 +114,15 @@ class BashTool(BaseTool):
                     job_id = self._transfer_to_background(proc, command, collected, reader)
                     for line in collected[emitted:]:
                         yield ToolResultDelta(tool_name="bash", content=line)
+                    partial = self._truncate("\n".join(collected))
+                    output_section = f"{partial}\n" if partial else ""
                     yield ToolCallResult(
                         tool_name="bash",
                         result=(
-                            f"用户已将命令转入后台执行。\n"
+                            f"{output_section}"
+                            f"[用户已将命令转入后台执行，以上是转入前的输出]\n"
                             f"job_id: {job_id}\n"
-                            f"使用 background_bash(action='status', job_id='{job_id}') 查看输出，"
+                            f"使用 background_bash(action='status', job_id='{job_id}') 查看后续输出，"
                             f"background_bash(action='stop', job_id='{job_id}') 终止任务。"
                         ),
                     )
@@ -157,10 +156,13 @@ class BashTool(BaseTool):
             reader.cancel()
             proc.kill()
             await proc.wait()
+            partial = self._truncate("\n".join(collected).rstrip())
+            output_section = f"{partial}\n" if partial else ""
             yield ToolCallResult(
                 tool_name="bash",
                 result=(
-                    f"命令超时（{timeout}s），已强制终止。"
+                    f"{output_section}"
+                    f"[命令超时（{timeout}s），已强制终止，以上是超时前的输出]\n"
                     f"该命令可能是长时间运行的进程，请改用 background_bash 工具重新执行。"
                 ),
                 is_error=True,

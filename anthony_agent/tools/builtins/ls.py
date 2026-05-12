@@ -27,7 +27,6 @@ _TOOL_DESCRIPTION = """\
 
 
 def _format_size(num_bytes: int) -> str:
-    """将字节数格式化为人类可读的大小"""
     size = float(num_bytes)
     for unit in ("B", "KB", "MB", "GB"):
         if size < 1024:
@@ -37,7 +36,6 @@ def _format_size(num_bytes: int) -> str:
 
 
 def _format_entry(entry: Path) -> str:
-    """格式化单个条目：目录 → 名称/，文件 → 名称 + 大小"""
     if entry.is_dir():
         return f"[目录] {entry.name}/"
     try:

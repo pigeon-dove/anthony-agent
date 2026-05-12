@@ -28,7 +28,7 @@ class ToolCall(BaseModel):
 class Message(BaseModel):
     role: str = "assistant"
     content: str | None = None
-    reasoning_content: str | None = None  # DeepSeek/Qwen 等 thinking 模型的推理内容，需原样回传
+    reasoning_content: str | None = None  # thinking 模型的推理内容，仅用于 UI 展示，不回传 API
     tool_calls: list[ToolCall] = Field(default_factory=list)
     usage: Usage = Field(default_factory=Usage)
 

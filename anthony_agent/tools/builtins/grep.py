@@ -21,15 +21,11 @@ _TOOL_DESCRIPTION = f"""\
 - 支持完整的 Python re 正则语法：`log.*Error`、`def\\s+\\w+`、`TODO|FIXME`
 - 可通过 include 参数按文件名过滤（如 `*.py`、`*.{{js,ts}}`），支持花括号展开
 - 可同时发起多个搜索调用以提高效率
+- 自动跳过二进制文件和常见非项目目录（.git、node_modules、.venv、__pycache__ 等）
 
 不适用场景：
 - 按文件名/路径查找 → 请使用 glob 工具
-- 查看目录结构 → 请使用 ls 工具
-
-输出限制：
-- 最多返回 {MAX_RESULTS} 条结果
-- 返回结果中的文件路径为绝对路径，便于后续直接传给其他工具
-- 自动跳过二进制文件和常见非项目目录（.git、node_modules、.venv、__pycache__ 等），仅搜索文本文件"""
+- 查看目录结构 → 请使用 ls 工具"""
 
 
 def _read_text_if_not_binary(file: Path) -> str | None:
