@@ -2,7 +2,7 @@
 
 from textual.widgets import Static
 
-# pyfiglet 'anthony' (font: ansi_shadow) — 金色渐变
+# ASCII art: 'anthony' (ansi_shadow 风格) — 金色渐变
 # 从亮金 rgb(255,215,0) 渐变到深金 rgb(184,134,11)
 _GRADIENT = [
     (255, 215, 0),    # 亮金
@@ -31,8 +31,7 @@ ICON_ART = "\n".join(ICON_LINES)
 
 BANNER_TEXT = (
     ICON_ART + "\n\n"
-    "[bold cyan]  Anthony Agent[/]  [dim]— AI Coding Assistant[/]\n"
-    "[dim]  Ctrl+D 退出 · Ctrl+Y 复制回复 · Ctrl+S 选择模式[/]"
+    "[bold cyan]  Anthony Agent[/]  [dim]— AI Coding Assistant[/]"
 )
 
 

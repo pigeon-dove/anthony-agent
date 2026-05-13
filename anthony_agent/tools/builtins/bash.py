@@ -98,7 +98,7 @@ class BashTool(BaseTool):
                 collected.append(raw.decode(errors="replace").rstrip("\n"))
 
         reader = asyncio.create_task(read_lines())
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         emitted = 0
         timed_out = False
@@ -122,8 +122,7 @@ class BashTool(BaseTool):
                             f"{output_section}"
                             f"[用户已将命令转入后台执行，以上是转入前的输出]\n"
                             f"job_id: {job_id}\n"
-                            f"使用 background_bash(action='status', job_id='{job_id}') 查看后续输出，"
-                            f"background_bash(action='stop', job_id='{job_id}') 终止任务。"
+                            f"后续可用 background_bash 的 status/stop action 跟进此任务。"
                         ),
                     )
                     return

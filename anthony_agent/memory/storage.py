@@ -1,9 +1,11 @@
 """JSONL 读写工具（基于 jsonlines 库）"""
 
-import sys
+import logging
 from pathlib import Path
 
 import jsonlines
+
+logger = logging.getLogger(__name__)
 
 
 class JSONLStorage:
@@ -41,10 +43,7 @@ class JSONLStorage:
                 except jsonlines.InvalidLineError:
                     bad += 1
         if bad:
-            print(
-                f"[storage] {self._path.name} 跳过 {bad} 行无法解析的数据",
-                file=sys.stderr,
-            )
+            logger.warning("%s 跳过 %d 行无法解析的数据", self._path.name, bad)
         return results
 
     def overwrite(self, records: list[dict]) -> None:

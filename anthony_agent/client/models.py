@@ -28,7 +28,7 @@ class ToolCall(BaseModel):
 class Message(BaseModel):
     role: str = "assistant"
     content: str | None = None
-    reasoning_content: str | None = None  # thinking 模型的推理内容，仅用于 UI 展示，不回传 API
+    reasoning_content: str | None = None  # thinking 模型的推理内容
     tool_calls: list[ToolCall] = Field(default_factory=list)
     usage: Usage = Field(default_factory=Usage)
 
@@ -43,6 +43,9 @@ class Message(BaseModel):
         elif self.tool_calls:
             # OpenAI API 要求 assistant 消息有 tool_calls 时 content 必须存在
             d["content"] = ""
+        # 有 tool_calls 时保留 reasoning_content（thinking 模型在 loop 内部需要）
+        if self.reasoning_content and self.tool_calls:
+            d["reasoning_content"] = self.reasoning_content
         if self.tool_calls:
             d["tool_calls"] = [tc.to_dict() for tc in self.tool_calls]
         return d
@@ -57,6 +60,8 @@ class Message(BaseModel):
             }
         if self.content is not None:
             d["content"] = self.content
+        if self.reasoning_content and self.tool_calls:
+            d["reasoning_content"] = self.reasoning_content
         if self.tool_calls:
             d["tool_calls"] = [tc.to_dict() for tc in self.tool_calls]
         return d

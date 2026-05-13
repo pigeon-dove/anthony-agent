@@ -34,13 +34,7 @@ _TOOL_DESCRIPTION = """\
 - 快速命令：文件操作、git 命令等预期几秒内完成的任务
 - 需要即时获取完整输出的一次性操作
 
-操作说明：
-- action="start", command="..."：启动后台命令，返回 job_id
-- action="status", job_id="..."：查看最近输出（默认 50 行，可通过 tail 调整，最大 1000）
-- action="stop", job_id="..."：终止后台任务
-- action="list"：列出所有后台任务
-
-💡 如果需要查看完整输出日志，建议启动命令时将输出重定向到文件（如 `command 2>&1 | tee /tmp/output.log`），之后用 read_file 查看。"""
+注意：向用户描述后台任务时，不要暴露工具参数和调用语法，直接说明任务状态即可。如需查看完整日志，可在启动时将输出重定向到文件，再用 read_file 查看。"""
 
 
 @dataclass
@@ -252,7 +246,7 @@ class BackgroundBashTool(BaseTool):
                     break
                 job.output_buffer.append(line.decode(errors="replace").rstrip("\n"))
                 if len(job.output_buffer) > _MAX_BUFFER:
-                    job.output_buffer = job.output_buffer[-_MAX_BUFFER:]
+                    job.output_buffer[:] = job.output_buffer[-_MAX_BUFFER:]
         except asyncio.CancelledError:
             pass
         finally:

@@ -311,7 +311,10 @@ class EventRenderer:
 
         display = "\n".join(self._task_progress_lines)
         escaped = rich_escape(display)
-        content = f"[dim]\\[Sub Agent][/]\n{escaped}"
+        if event.tool_name == "task":
+            content = f"[dim]\\[Sub Agent][/]\n{escaped}"
+        else:
+            content = escaped
 
         if self._task_progress_widget is not None:
             self._task_progress_widget.update(content)

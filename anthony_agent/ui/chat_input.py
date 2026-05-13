@@ -14,7 +14,6 @@ class ChatInput(TextArea):
         Binding("escape", "app.cancel", "中断输出", priority=True, show=True),
         Binding("ctrl+d", "app.quit", "退出", priority=True, show=True),
         Binding("ctrl+y", "app.copy_last_reply", "复制回复", priority=True, show=True),
-        Binding("ctrl+s", "app.toggle_mouse", "选择模式", priority=True, show=True),
     ]
 
     @classmethod

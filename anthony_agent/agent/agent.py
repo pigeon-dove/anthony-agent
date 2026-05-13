@@ -7,7 +7,7 @@ from typing import AsyncGenerator
 from anthony_agent.client import OpenAIClient
 from anthony_agent.client.models import Message
 from anthony_agent.tools import ToolRegistry
-from anthony_agent.tools.base import ToolResult
+from anthony_agent.tools.base import BaseTool, ToolResult
 from anthony_agent.memory.session import SessionManager
 from anthony_agent.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, _calc_total_tokens
 from anthony_agent.agent.events import (
@@ -54,6 +54,10 @@ class Agent:
             yield event
             if self._cancelled:
                 break
+
+        # loop 结束，清理历史消息中的 reasoning_content（仅 loop 内部需要保留）
+        for m in self._messages:
+            m.pop("reasoning_content", None)
 
     def load_history(self) -> None:
         if self._session:
@@ -176,7 +180,7 @@ class Agent:
         for tc in msg.tool_calls:
             args = json.loads(tc.arguments)
             tool = self._registry.get(tc.name)
-            is_streaming = tool is not None and tool.run_streaming(**args) is not None
+            is_streaming = tool is not None and type(tool).run_streaming is not BaseTool.run_streaming
             parsed.append((tc, args, is_streaming))
 
         # 并行发起所有普通工具

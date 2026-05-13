@@ -63,8 +63,9 @@ def _estimate_message_tokens(msg: dict, enc: "tiktoken.Encoding") -> int:
         rest = {k: v for k, v in msg.items() if k != "content"}
         total += len(enc.encode(json.dumps(rest, ensure_ascii=False)))
         return total
-    # 普通消息：直接整条 JSON 序列化后编码
-    return 4 + len(enc.encode(json.dumps(msg, ensure_ascii=False)))
+    # 普通消息：排除 reasoning_content 后整条 JSON 序列化编码
+    stripped = {k: v for k, v in msg.items() if k != "reasoning_content"}
+    return 4 + len(enc.encode(json.dumps(stripped, ensure_ascii=False)))
 
 
 def estimate_tokens(messages: list[dict]) -> int:
@@ -213,6 +214,7 @@ async def _compress_to_dialogue(messages: list[dict], client: "OpenAIClient") ->
     _replace_tool_outputs(prepared)
     _truncate_long_arguments(prepared)
     _flatten_image_content(prepared)
+    _strip_reasoning_content(prepared)
     _ensure_assistant_content(prepared)
 
     resp = await client.chat([
@@ -336,6 +338,12 @@ def _flatten_image_content(messages: list[dict]) -> None:
         if image_count:
             text_parts.append(f"[{image_count} 张图片]")
         msg["content"] = "\n".join(text_parts) if text_parts else ""
+
+
+def _strip_reasoning_content(messages: list[dict]) -> None:
+    """移除 thinking 模型的推理内容，压缩和 token 计算时不需要。"""
+    for msg in messages:
+        msg.pop("reasoning_content", None)
 
 def _ensure_assistant_content(messages: list[dict]) -> None:
     """确保 assistant 消息始终有 content 字段（API 要求不能缺失）。"""

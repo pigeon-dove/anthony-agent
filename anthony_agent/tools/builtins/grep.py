@@ -8,7 +8,7 @@ from wcmatch import fnmatch as wcfnmatch
 
 from anthony_agent.tools.base import BaseTool, ToolDefinition, ToolResult
 
-MAX_RESULTS = 200  # 单次搜索最大结果行数
+_MAX_RESULTS = 200  # 单次搜索最大结果行数
 _BINARY_CHECK_SIZE = 512  # 二进制文件检测：检查前 512 字节是否包含 \x00
 _FN_FLAGS = wcfnmatch.BRACE  # wcmatch 标志：支持 {} 花括号展开
 _SKIP_DIRS = frozenset({".git", "node_modules", ".venv", "__pycache__", ".tox", ".mypy_cache", "dist", "build"})
@@ -67,7 +67,7 @@ def _sync_search(
         for lineno, line in enumerate(text.splitlines(), start=1):
             if regex.search(line):
                 matches.append(f"{abs_path}:{lineno}:{line}")
-                if len(matches) >= MAX_RESULTS:
+                if len(matches) >= _MAX_RESULTS:
                     truncated = True
                     break
         if truncated:
@@ -122,5 +122,5 @@ class GrepTool(BaseTool):
             return ToolResult(content=f"没有匹配 '{pattern}' 的内容")
 
         if truncated:
-            results.append(f"\n(结果已截断，共显示 {MAX_RESULTS} 条)")
+            results.append(f"\n(结果已截断，共显示 {_MAX_RESULTS} 条)")
         return ToolResult(content="\n".join(results))

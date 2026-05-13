@@ -64,7 +64,7 @@ class BaseTool(ABC):
         """返回事件流的 AsyncGenerator，支持流式输出的工具覆写此方法。
 
         返回 None 表示不支持流式，走普通 execute 路径。
-        产出的事件类型由具体工具决定，最后必须产出 ToolResult。
+        产出的事件类型由具体工具决定，最后必须产出 ToolCallResult 事件。
         """
         return None
 

@@ -15,6 +15,9 @@ from anthony_agent.agent import Agent
 from anthony_agent.tools import ToolRegistry
 from anthony_agent.ui.styles import APP_CSS
 from anthony_agent.ui.renderer import EventRenderer
+from anthony_agent.ui.chat_input import ChatInput
+from anthony_agent.ui.context_bar import ContextBar
+from anthony_agent.ui.banner import BannerWidget
 
 _NEAR_BOTTOM_THRESHOLD = 3  # 判定“接近底部”的行距阈值
 
@@ -32,9 +35,6 @@ class _MessageArea(VerticalScroll):
                 or new >= self.max_scroll_y - _NEAR_BOTTOM_THRESHOLD
             )
             app._renderer.notify_user_scroll(is_at_bottom)
-from anthony_agent.ui.chat_input import ChatInput
-from anthony_agent.ui.context_bar import ContextBar
-from anthony_agent.ui.banner import BannerWidget
 
 
 class AgentApp(App):
@@ -44,9 +44,9 @@ class AgentApp(App):
         Binding("escape", "cancel", "中断输出", priority=True),
         Binding("ctrl+d", "quit", "退出", priority=True),
         Binding("ctrl+y", "copy_last_reply", "复制回复", priority=True),
-        Binding("ctrl+s", "toggle_mouse", "选择模式", priority=True),
+        Binding("ctrl+c", "screen.copy_text", "复制选中", show=True, priority=True),
         Binding("ctrl+k", "compact", "压缩上下文", priority=True),
-        Binding("ctrl+b", "bash_to_background", "转入后台", priority=True),
+        Binding("ctrl+b", "bash_to_background", show=False, priority=True),
         Binding("ctrl+q", "noop", show=False),  # 屏蔽终端默认 quit
     ]
 
@@ -56,7 +56,6 @@ class AgentApp(App):
         self._session_id = session_id
         self._tool_registry = tool_registry
         self._renderer: EventRenderer | None = None
-        self._mouse_enabled: bool = True
 
     def compose(self) -> ComposeResult:
         yield _MessageArea(id="message-area")
@@ -188,26 +187,6 @@ class AgentApp(App):
         finally:
             input_box.disabled = False
             input_box.focus()
-
-    def action_toggle_mouse(self) -> None:
-        """切换鼠标模式：开启时 Textual 捕获鼠标（可点击/滚动），关闭时终端原生选择（可 Cmd+C 复制）。"""
-        driver = self._driver
-        if driver is None:
-            return
-        if self._mouse_enabled:
-            driver._disable_mouse_support()  # type: ignore[attr-defined]
-            self._mouse_enabled = False
-            self.notify(
-                "选择模式 [b]ON[/b] — 可用鼠标选择文本并 Cmd+C 复制，再按 Ctrl+S 恢复",
-                timeout=3,
-            )
-        else:
-            driver._enable_mouse_support()  # type: ignore[attr-defined]
-            self._mouse_enabled = True
-            self.notify(
-                "选择模式 [b]OFF[/b] — 鼠标交互已恢复",
-                timeout=2,
-            )
 
     def action_compact(self) -> None:
         """手动触发上下文压缩。"""
