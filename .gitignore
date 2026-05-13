@@ -215,9 +215,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+.DS_Store
 .vscode/*
 .codebuddy/
 .claude/
 .anthony/
 data/
-.DS_Store

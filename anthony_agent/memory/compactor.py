@@ -73,7 +73,7 @@ def estimate_tokens(messages: list[dict]) -> int:
     return sum(_estimate_message_tokens(m, enc) for m in messages)
 
 
-def _calc_total_tokens(messages: list[dict], system_prompt: str) -> int:
+def calc_total_tokens(messages: list[dict], system_prompt: str) -> int:
     return len(_get_encoder().encode(system_prompt)) + 4 + estimate_tokens(messages)
 
 
@@ -116,7 +116,7 @@ def check_compact(messages: list[dict], system_prompt: str) -> CompactCheck | No
     if not messages:
         return None
     threshold = int(app_config.llm.max_input_tokens * app_config.compact.compact_threshold)
-    total = _calc_total_tokens(messages, system_prompt)
+    total = calc_total_tokens(messages, system_prompt)
     if total <= threshold:
         return None
     return CompactCheck(current_tokens=total, threshold_tokens=threshold)
@@ -199,7 +199,7 @@ async def do_compact(
     if session_manager:
         session_manager.overwrite_messages(messages)
 
-    after = _calc_total_tokens(messages, system_prompt)
+    after = calc_total_tokens(messages, system_prompt)
     logger.info("auto_compact: %d → %d tokens", check.current_tokens, after)
     return CompactResult(before_tokens=check.current_tokens, after_tokens=after, threshold_tokens=check.threshold_tokens)
 

@@ -9,7 +9,7 @@ from anthony_agent.client.models import Message
 from anthony_agent.tools import ToolRegistry
 from anthony_agent.tools.base import BaseTool, ToolResult
 from anthony_agent.memory.session import SessionManager
-from anthony_agent.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, _calc_total_tokens
+from anthony_agent.memory.compactor import micro_compact, check_compact, do_compact, CompactCheck, calc_total_tokens
 from anthony_agent.agent.events import (
     AgentEvent, ReasoningDelta, TextDelta, ToolCallStart, ToolArgsDelta,
     ToolCallResult, ToolResultDelta, ResponseComplete, UsageReport,
@@ -275,7 +275,7 @@ class Agent:
         """用户手动触发上下文压缩。"""
         if not self._messages:
             return
-        total = _calc_total_tokens(self._messages, self._system_prompt)
+        total = calc_total_tokens(self._messages, self._system_prompt)
         check = CompactCheck(current_tokens=total, threshold_tokens=total)
         yield CompactStart(current_tokens=total, threshold_tokens=total, manual=True)
         result = await do_compact(
