@@ -1,6 +1,6 @@
-ji z# 第三章：文件工具 — read / write / edit / multi_edit
+# 第三章：文件工具 — read / write / edit / multi_edit
 
-> 本章目标：实现 Agent 最基础的四个文件操作工具，理解每个工具的设计取舍。
+编码助手最高频的操作就是读写文件。这一章实现四个文件工具，每个职责单一，模型不容易用错。
 
 ## 概览
 
@@ -217,4 +217,3 @@ if edits[0].get("old_string", "") == "":
 - 错误返回 `ToolResult(is_error=True)`，不抛异常
 - 返回信息简洁但够用（让模型确认操作结果）
 
-下一章实现搜索工具：`grep`、`glob`、`ls`。

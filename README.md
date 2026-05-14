@@ -6,7 +6,7 @@
 
 <p align="center">
   轻量、透明、可定制的终端 AI 编码助手<br>
-  <sub>~2000 行 Python · 会话明文存储 · 兼容任意 OpenAI API · 兼容 Claude Code Skill</sub>
+  <sub>基于 openai 库从零构建 · 无框架无魔法 · ~2000 行 Python · 兼容任意 OpenAI API</sub>
 </p>
 
 <p align="center">
@@ -20,14 +20,15 @@
 
 ## 特性
 
-- **轻量** — 全部代码约 2000 行 Python，无复杂框架，依赖少
+- **从零构建** — 唯一的 AI 依赖是 `openai` 库，没有 LangChain / LlamaIndex / AutoGen 等框架，每一行逻辑都可追溯
+- **轻量** — 全部代码约 2000 行 Python，无复杂抽象，读完即懂
 - **透明** — 会话以 JSONL 明文存储在项目目录下（`.anthony/`），随时可查、可改、可删
 - **模型自由** — 兼容任何 OpenAI 格式 API（OpenAI / DeepSeek / Qwen / Ollama 等），一个 `.env` 切换
 - **Skill 生态** — 兼容 [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) / [OpenClaw](https://github.com/nicepkg/openclaw) 的 Skill 格式，可从 [ClawHub](https://clawhub.com) 下载社区技能
 - **14 个内置工具** — 文件读写编辑、正则搜索、Shell 命令（前台/后台）、联网搜索与网页抓取、子 Agent 委派
 - **上下文管理** — 旧工具输出自动裁剪 + LLM 摘要压缩 + Markdown 归档，长会话不丢关键信息
 - **Thinking 模型** — 流式展示 DeepSeek / Qwen 等模型的推理过程
-- **可学可改** — 配套 [8 章教程](#-教程)，适合学习 Agent 架构或二次开发
+- **配套教程** — [10 章教程](#教程)从 Agent Loop 到 TUI，适合从零学习 Agent 架构或基于此二次开发
 
 ## 快速开始
 

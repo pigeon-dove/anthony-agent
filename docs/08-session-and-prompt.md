@@ -1,6 +1,6 @@
 # 第八章：会话持久化与 System Prompt
 
-> 本章目标：理解会话存储机制和 System Prompt 的设计思路。
+两个看似不相关的话题放在一起，是因为它们共同决定了 Agent "记住什么"和"怎么行动"。
 
 ## 会话持久化
 
@@ -269,4 +269,3 @@ def _build_messages(self):
 | `SYSTEM_PROMPT_TEMPLATE` | 告诉模型身份、环境、工作流程、工具用法、压缩行为、回复规范 |
 | `SUMMARY_USER_PROMPT` | 指导 LLM 压缩：保留什么、丢弃什么、最后一轮必须完整 |
 
-下一章实现 LLM 客户端——异步流式调用、自动重试和 thinking 模型支持。

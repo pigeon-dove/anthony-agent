@@ -1,6 +1,6 @@
 # 第五章：命令执行 — bash / background_bash / 转后台
 
-> 本章目标：实现前台和后台两种 Shell 工具，理解流式输出、进程管理和进程移交机制。
+这是整个项目最复杂的两个工具。涉及子进程管理、流式输出、超时控制，以及一个有趣的运行时进程移交机制。
 
 ## 两种执行模式
 
@@ -287,4 +287,3 @@ def adopt(cls, proc, command, collected, reader):
 | **进程移交** | 共享 list 引用 + 不 cancel reader + watch 包装 |
 | **上下文注入** | 活跃任务列表自动注入 system prompt |
 
-下一章实现剩余的高级工具：`think`、`task`（子 Agent）、`skill`、`web_search`、`web_fetch`。

@@ -1,6 +1,6 @@
 # 第六章：高级工具 — think / task / skill / web_search / web_fetch
 
-> 本章目标：实现五个各有特色的高级工具，覆盖思考、委派、技能扩展和联网能力。
+五个各有特色的工具：一张草稿纸、一个子 Agent、一套技能扩展、两个联网能力。
 
 ## think — 给模型一张草稿纸
 
@@ -298,4 +298,3 @@ async with AsyncSession(
 | `web_search` | Tavily API 封装 | API Key 可选、同步 SDK 走线程池 |
 | `web_fetch` | HTML → Markdown | 双模式（阅读/链接提取）、curl_cffi 反爬 |
 
-至此 14 个工具全部实现完毕。下一章进入上下文管理——当对话越来越长，怎么在 token 限制内保留关键信息。

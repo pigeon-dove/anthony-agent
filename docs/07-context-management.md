@@ -1,6 +1,6 @@
 # 第七章：上下文管理 — 让长对话不崩溃
 
-> 本章目标：理解两层压缩策略的设计，解决"对话越来越长，token 不够用"的核心问题。
+LLM 的上下文窗口是有限的，而编码助手的对话膨胀速度极快。这一章实现两层压缩策略，在 token 限制内尽可能保留关键信息。
 
 ## 问题
 
@@ -269,4 +269,3 @@ def _estimate_message_tokens(msg, enc):
 | 归档到 Markdown | 有损压缩的安全网，可溯源 |
 | reasoning_content 不计入 | loop 结束后清除，不占 API 传输 |
 
-下一章讲会话持久化和 System Prompt 设计。
