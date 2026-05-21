@@ -24,7 +24,7 @@
 - **轻量** — 全部代码约 2000 行 Python，无复杂抽象，读完即懂
 - **透明** — 会话以 JSONL 明文存储在项目目录下（`.anthony/`），随时可查、可改、可删
 - **模型自由** — 兼容任何 OpenAI 格式 API（OpenAI / DeepSeek / Qwen / Ollama 等），一个 `.env` 切换
-- **Skill 生态** — 兼容 [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) / [OpenClaw](https://github.com/nicepkg/openclaw) 的 Skill 格式，可从 [ClawHub](https://clawhub.com) 下载社区技能
+- **Skill 生态** — 兼容 [Claude Code](https://code.claude.com/docs/en/skills) / [OpenClaw](https://clawhub.ai/) 的 Skill 格式，可从 [ClawHub](https://clawhub.com) 下载社区技能
 - **14 个内置工具** — 文件读写编辑、正则搜索、Shell 命令（前台/后台）、联网搜索与网页抓取、子 Agent 委派
 - **上下文管理** — 旧工具输出自动裁剪 + LLM 摘要压缩 + Markdown 归档，长会话不丢关键信息
 - **Thinking 模型** — 流式展示 DeepSeek / Qwen 等模型的推理过程
@@ -173,7 +173,7 @@ your-project/
 
 ## 技能系统
 
-Skill 格式兼容 [Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/skills) 和 [OpenClaw](https://github.com/nicepkg/openclaw)，可直接从 [ClawHub](https://clawhub.com) 下载社区技能。
+Skill 格式兼容 [Claude Code](https://code.claude.com/docs/en/skills) 和 [OpenClaw](https://clawhub.ai/)，可直接从 [ClawHub](https://clawhub.com) 下载社区技能。
 
 技能存放在 `~/.anthony/skills/`：
 
