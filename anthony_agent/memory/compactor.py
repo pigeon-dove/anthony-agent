@@ -163,13 +163,19 @@ async def do_compact(
         _count_turns(to_compress), _count_turns(recent),
     )
 
-    # 归档完整历史
-    transcript_path = None
-    if session_manager:
-        transcript_path = session_manager.save_transcript(messages)
+    try:
+        # 归档完整历史
+        transcript_path = None
+        if session_manager:
+            transcript_path = session_manager.save_transcript(messages)
 
-    # LLM 压缩
-    summary_text = await _compress_to_dialogue(to_compress, client)
+        # LLM 压缩
+        summary_text = await _compress_to_dialogue(to_compress, client)
+    except BaseException:
+        # 压缩失败时恢复 messages 原样，避免 last_user 丢失
+        if last_user:
+            messages.append(last_user)
+        raise
 
     archive_note = ""
     if transcript_path:
@@ -287,7 +293,16 @@ def _replace_tool_outputs(messages: list[dict]) -> None:
         name = tc_map.get(call_id, "unknown")
         if name in _SKIP_COMPACT_TOOLS:
             continue
-        msg["content"] = f"{_COMPACT_PREFIX} 此前调用了工具 {name}（call_id: {call_id}），原始输出已省略"
+        # 图片附件 user message：content 是列表且含 image_url part
+        if msg.get("role") == "user" and isinstance(content, list) and any(
+            p.get("type") == "image_url" for p in content
+        ):
+            msg["content"] = (
+                f"{_COMPACT_PREFIX} 此前调用了工具 {name} 读取了图片（call_id: {call_id}），"
+                "图片内容已不在上下文中。如需再次查看，请重新调用工具读取原始文件。"
+            )
+        else:
+            msg["content"] = f"{_COMPACT_PREFIX} 此前调用了工具 {name}（call_id: {call_id}），原始输出已省略"
 
 def _msg_tool_call_id(msg: dict) -> str | None:
     """返回这条消息关联的 tool_call_id（两种形式），若非工具输出则返回 None。"""

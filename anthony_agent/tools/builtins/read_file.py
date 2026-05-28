@@ -61,7 +61,11 @@ def _format_output(lines: list[str], start: int, total: int) -> str:
     result = "\n".join(parts)
 
     if end < total:
-        result += f"\n\n(显示第 {start + 1}-{end} 行，共 {total} 行，剩余 {total - end} 行未显示)"
+        next_offset = end + 1
+        result += (
+            f"\n\n(显示第 {start + 1}-{end} 行，共 {total} 行，剩余 {total - end} 行未显示。"
+            f"可通过 offset={next_offset} 继续读取)"
+        )
 
     return result
 

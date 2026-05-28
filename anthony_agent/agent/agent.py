@@ -250,7 +250,7 @@ class Agent:
             self._persist(image_msg)
 
     async def _try_compact(self) -> AsyncGenerator[AgentEvent, None]:
-        for _ in range(3):
+        for _ in range(5):
             check = check_compact(messages=self._messages, system_prompt=self._system_prompt)
             if not check:
                 return
